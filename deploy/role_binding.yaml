@@ -1,0 +1,11 @@
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: webhookrelay-operator
+subjects:
+- kind: ServiceAccount
+  name: webhookrelay-operator
+roleRef:
+  kind: Role
+  name: webhookrelay-operator
+  apiGroup: rbac.authorization.k8s.io
