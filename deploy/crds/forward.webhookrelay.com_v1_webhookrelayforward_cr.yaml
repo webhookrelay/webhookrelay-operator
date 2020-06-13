@@ -1,0 +1,7 @@
+apiVersion: forward.webhookrelay.com/v1
+kind: WebhookRelayForward
+metadata:
+  name: example-webhookrelayforward
+spec:
+  # Add fields here
+  size: 3
