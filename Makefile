@@ -11,6 +11,10 @@ go-gen:
 	$(OPERATOR_SDK) generate k8s
 	$(OPERATOR_SDK) generate crds
 
+## Start local Webhook Relay operator
+local-run:
+	OPERATOR_NAME=webhookrelay-operator $(OPERATOR_SDK) run local --operator-flags="--zap-devel" 
+
 ##############################
 #     Third-party tools      #
 ##############################
