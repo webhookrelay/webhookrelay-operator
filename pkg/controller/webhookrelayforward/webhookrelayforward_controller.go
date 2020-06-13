@@ -2,6 +2,7 @@ package webhookrelayforward
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -144,7 +145,7 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
 
 	// Define a new Deployment object
-	deployment := newDeploymentForCR(instance)
+	deployment := r.newDeploymentForCR(instance)
 
 	// Set WebhookRelayForward instance as the owner and controller
 	if err := controllerutil.SetControllerReference(instance, deployment, r.scheme); err != nil {
@@ -176,20 +177,50 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 }
 
 // newDeploymentForCR returns a new Webhook Relay forwarder deployment with the same name/namespace as the cr
-func newDeploymentForCR(cr *forwardv1.WebhookRelayForward) *appsv1.Deployment {
+func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookRelayForward) *appsv1.Deployment {
 	labels := map[string]string{
 		"app": cr.Name,
 	}
 	podLabels := map[string]string{
 		"name": "webhookrelay-forwarder",
 	}
+
+	var buckets []string
+	for idx := range cr.Spec.Buckets {
+		buckets = append(buckets, cr.Spec.Buckets[idx].Ref)
+	}
+
+	image := cr.Spec.Image
+	if image == "" {
+		image = r.config.Image
+	}
+
+	// TODO: refactor this part
+	// as a mounted secret
+	// for access token https://github.com/webhookrelay/webhookrelay-operator/issues/1
+	env := []corev1.EnvVar{
+		{
+			Name:  "BUCKETS",
+			Value: strings.Join(buckets, ","),
+		},
+		{
+			Name:  "KEY",
+			Value: r.apiClient.accessTokenKey,
+		},
+		{
+			Name:  "SECRET",
+			Value: r.apiClient.accessTokenSecret,
+		},
+	}
+
 	podTemplateSpec := corev1.PodTemplateSpec{
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
+					Name:            "webhookrelayd",
+					ImagePullPolicy: corev1.PullAlways,
+					Image:           image,
+					Env:             env,
 				},
 			},
 		},
