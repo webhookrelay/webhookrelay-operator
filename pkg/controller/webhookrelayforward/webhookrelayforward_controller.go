@@ -2,8 +2,8 @@ package webhookrelayforward
 
 import (
 	"context"
+	"time"
 
-	forwardv1 "github.com/webhookrelay/webhookrelay-operator/pkg/apis/forward/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -18,9 +18,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	"github.com/go-logr/logr"
+	forwardv1 "github.com/webhookrelay/webhookrelay-operator/pkg/apis/forward/v1"
+	"github.com/webhookrelay/webhookrelay-operator/pkg/config"
 )
 
 var log = logf.Log.WithName("controller_webhookrelayforward")
+
+const (
+	reconcilePeriodSeconds = 15
+)
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -35,7 +43,12 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileWebhookRelayForward{client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	cfg := config.MustLoad()
+	return &ReconcileWebhookRelayForward{
+		client: mgr.GetClient(),
+		scheme: mgr.GetScheme(),
+		config: &cfg,
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -73,6 +86,9 @@ type ReconcileWebhookRelayForward struct {
 	// that reads objects from the cache and writes to the apiserver
 	client client.Client
 	scheme *runtime.Scheme
+
+	apiClient *WebhookRelayClient
+	config    *config.Config
 }
 
 // Reconcile reads that state of the cluster for a WebhookRelayForward object and makes changes based on the state read
@@ -83,8 +99,10 @@ type ReconcileWebhookRelayForward struct {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling WebhookRelayForward")
+	logger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
+
+	reconcilePeriod := reconcilePeriodSeconds * time.Second
+	reconcileResult := reconcile.Result{RequeueAfter: reconcilePeriod}
 
 	// Fetch the WebhookRelayForward instance
 	instance := &forwardv1.WebhookRelayForward{}
@@ -97,36 +115,64 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
-		return reconcile.Result{}, err
+		return reconcileResult, err
 	}
+
+	// Compare the instance names, generations and UIDs to check if it's
+	// the same instance. Update the client if client instance name,
+	// generation or UID are different from current instance. In theory,
+	// CRs can be used by different Webhook Relay accounts so we shouldn't
+	// reuse the same client
+	if r.apiClient == nil ||
+		r.apiClient.instanceName != instance.GetName() ||
+		r.apiClient.instanceGeneration != instance.GetGeneration() ||
+		r.apiClient.instanceUID != instance.GetUID() {
+		if err := r.setClientForCluster(instance); err != nil {
+			log.Error(err, "Failed to configure Webhook Relay API client, cannot continue")
+			return reconcileResult, err
+		}
+	}
+
+	if err := r.reconcile(logger, instance); err != nil {
+		logger.Info("Reconcile failed", "error", err)
+		return reconcileResult, nil
+	}
+
+	return reconcileResult, nil
+}
+
+func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
 
 	// Define a new Deployment object
 	deployment := newDeploymentForCR(instance)
 
 	// Set WebhookRelayForward instance as the owner and controller
 	if err := controllerutil.SetControllerReference(instance, deployment, r.scheme); err != nil {
-		return reconcile.Result{}, err
+		return err
 	}
 
 	// Check if this Deployment already exists
 	found := &appsv1.Deployment{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, found)
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, found)
 	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
+		logger.Info("Creating a new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
 		err = r.client.Create(context.TODO(), deployment)
 		if err != nil {
-			return reconcile.Result{}, err
+			return err
 		}
 
-		// Pod created successfully - don't requeue
-		return reconcile.Result{}, nil
+		// Deployment created successfully - don't requeue
+		return nil
 	} else if err != nil {
-		return reconcile.Result{}, err
+		return err
 	}
 
-	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
-	return reconcile.Result{}, nil
+	// compare image, buckets
+
+	// Deployment already exists - don't requeue
+	logger.Info("Skip reconcile: Deployment already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+
+	return nil
 }
 
 // newDeploymentForCR returns a new Webhook Relay forwarder deployment with the same name/namespace as the cr
