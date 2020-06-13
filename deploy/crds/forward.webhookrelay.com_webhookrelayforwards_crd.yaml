@@ -31,9 +31,146 @@ spec:
             type: object
           spec:
             description: WebhookRelayForwardSpec defines the desired state of WebhookRelayForward
+            properties:
+              buckets:
+                description: Buckets to manage and subscribe to. Each CR can control
+                  one or more buckets. Buckets can be inspected and manually created
+                  via Web UI here https://my.webhookrelay.com/buckets
+                items:
+                  description: BucketSpec defines a bucket that groups one or more
+                    inputs (public endpoints) and one ore more outputs (where the
+                    webhooks should be routed)
+                  properties:
+                    description:
+                      type: string
+                    inputs:
+                      description: Inputs are your public endpoints. Inputs can either
+                        be https://my.webhookrelay.com/v1/webhooks/[unique ID] format
+                        or custom subdomains under https://[subdomain].hooks.webhookrelay.com
+                        or completely custom domains such as https://hooks.example.com.
+                        Important! Note that if you specify inputs, operator will
+                        automatically synchronize inputs of the specified bucket with
+                        the provided CR spec.
+                      items:
+                        description: InputSpec defines an input that belong to a bucket
+                        properties:
+                          body:
+                            type: string
+                          customDomain:
+                            description: CustomDomain can be used to assign a permanent
+                              domain name for your input such as example.hooks.webhookrelay.com
+                            type: string
+                          description:
+                            description: Description can be any string
+                            type: string
+                          function_id:
+                            description: FunctionID attaches function to this input.
+                              Functions on inputs can modify responses to the caller
+                              and modify requests that are then passed to each output.
+                            type: string
+                          headers:
+                            additionalProperties:
+                              items:
+                                type: string
+                              type: array
+                            description: Static response configuration
+                            type: object
+                          name:
+                            type: string
+                          pathPrefix:
+                            description: 'PathPrefix can be combined together with
+                              CustomDomain to create ''API like'' functionality where
+                              calls from: petshop.com/dogs -> are forwarded to [dogs
+                              store] petshop.com/cats -> are forwarded to [cats store]'
+                            type: string
+                          responseFromOutput:
+                            description: Dynamic response configuration either output
+                              name, ID or "anyOutput" to indicate that the first response
+                              from any output is good enough. Defaults to empty string
+                            type: string
+                          statusCode:
+                            type: integer
+                        required:
+                        - function_id
+                        type: object
+                      type: array
+                    outputs:
+                      description: Outputs are destinations where webhooks/API requests
+                        should be forwarded.
+                      items:
+                        description: OutputSpec defines and output that belong to
+                          a bucket. Outputs are destinations where webhooks/API requests
+                          are forwarded.
+                        properties:
+                          description:
+                            description: Description can be any string
+                            type: string
+                          destination:
+                            description: Destination is a URL that specifies where
+                              to send the webhooks. For example it can be http://local-jenkins/ghpr
+                              for Jenkins webhooks or any other URL.
+                            type: string
+                          function_id:
+                            description: FunctionID attaches function to this output.
+                              Functions on output can modify requests that are then
+                              passed to destinations.
+                            type: string
+                          internal:
+                            description: Internal specifies whether webhook should
+                              be sent to an internal destination. Since operator is
+                              working with internal agents, this option defaults to
+                              True
+                            type: boolean
+                          name:
+                            type: string
+                          overrideHeaders:
+                            additionalProperties:
+                              type: string
+                            description: OverrideHeaders
+                            type: object
+                          timeout:
+                            description: Timeout specifies how long agent should wait
+                              for the response
+                            type: integer
+                        required:
+                        - description
+                        - destination
+                        - timeout
+                        type: object
+                      type: array
+                    ref:
+                      description: Ref is the name or the ID of a bucket that can
+                        be reused (if it already exists) or that will be created by
+                        the operator. Buckets act as a grouping mechanism for Inputs
+                        and Outputs
+                      type: string
+                  type: object
+                type: array
+              image:
+                description: Image is webhookrelayd container, defaults to webhookrelay/webhookrelayd:latest
+                type: string
+              secretRefName:
+                description: 'SecretRefName is the name of the secret object that
+                  contains generated token from https://my.webhookrelay.com/tokens
+                  secret should have two fields: key    - your token key (a long UUID)
+                  secret - token secret, encrypted once generated and cannot be recovered
+                  from Webhook Relay. If secret is lost, just create a new token'
+                type: string
+              secretRefNamespace:
+                description: SecretRefNamespace is the namespace of the secret reference.
+                type: string
+            required:
+            - buckets
             type: object
           status:
             description: WebhookRelayForwardStatus defines the observed state of WebhookRelayForward
+            properties:
+              phase:
+                description: ForwarderPhase is the phase of the Webhook Relay forwarder
+                  node at a given point in time.
+                type: string
+              ready:
+                type: boolean
             type: object
         type: object
     served: true
