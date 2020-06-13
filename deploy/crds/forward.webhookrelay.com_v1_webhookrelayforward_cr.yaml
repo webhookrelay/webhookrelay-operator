@@ -4,4 +4,9 @@ metadata:
   name: example-webhookrelayforward
 spec:
   # Add fields here
-  size: 3
+  secretRefName: whr-credentials
+  secretRefNamespace: ""
+  buckets:
+    - ref: k8s-operator
+      
+
