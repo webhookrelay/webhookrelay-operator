@@ -203,14 +203,46 @@ func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookR
 			Name:  "BUCKETS",
 			Value: strings.Join(buckets, ","),
 		},
-		{
-			Name:  "KEY",
-			Value: r.apiClient.accessTokenKey,
-		},
-		{
-			Name:  "SECRET",
-			Value: r.apiClient.accessTokenSecret,
-		},
+	}
+
+	// configuring authentication for the container
+	if cr.Spec.SecretRefName != "" {
+
+		keyRefSelect := &corev1.SecretKeySelector{}
+		keyRefSelect.Name = cr.Spec.SecretRefName
+		keyRefSelect.Key = forwardv1.AccessTokenKeyName
+
+		secretRefSelect := &corev1.SecretKeySelector{}
+		secretRefSelect.Name = cr.Spec.SecretRefName
+		secretRefSelect.Key = forwardv1.AccessTokenSecretName
+
+		env = append(env,
+			corev1.EnvVar{
+				Name: "KEY",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: keyRefSelect,
+				},
+			},
+			corev1.EnvVar{
+				Name: "SECRET",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: secretRefSelect,
+				},
+			},
+		)
+	} else {
+		// setting the ones from the client that have likely come
+		// from the environment variables set directly on the operator
+		env = append(env,
+			corev1.EnvVar{
+				Name:  "KEY",
+				Value: r.apiClient.accessTokenKey,
+			},
+			corev1.EnvVar{
+				Name:  "SECRET",
+				Value: r.apiClient.accessTokenSecret,
+			},
+		)
 	}
 
 	podTemplateSpec := corev1.PodTemplateSpec{
