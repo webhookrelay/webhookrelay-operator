@@ -29,6 +29,14 @@ var log = logf.Log.WithName("controller_webhookrelayforward")
 
 const (
 	reconcilePeriodSeconds = 15
+
+	// containerTokenKeyEnvName and containerTokenSecretEnvName used
+	// to specify authentication details for the container
+	containerTokenKeyEnvName    = "KEY"
+	containerTokenSecretEnvName = "SECRET"
+	// containerBucketsEnvName specify which buckets the agent should
+	// subscribe to
+	containerBucketsEnvName = "BUCKETS"
 )
 
 /**
@@ -200,7 +208,7 @@ func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookR
 	// for access token https://github.com/webhookrelay/webhookrelay-operator/issues/1
 	env := []corev1.EnvVar{
 		{
-			Name:  "BUCKETS",
+			Name:  containerBucketsEnvName,
 			Value: strings.Join(buckets, ","),
 		},
 	}
@@ -218,13 +226,13 @@ func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookR
 
 		env = append(env,
 			corev1.EnvVar{
-				Name: "KEY",
+				Name: containerTokenKeyEnvName,
 				ValueFrom: &corev1.EnvVarSource{
 					SecretKeyRef: keyRefSelect,
 				},
 			},
 			corev1.EnvVar{
-				Name: "SECRET",
+				Name: containerTokenSecretEnvName,
 				ValueFrom: &corev1.EnvVarSource{
 					SecretKeyRef: secretRefSelect,
 				},
@@ -235,11 +243,11 @@ func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookR
 		// from the environment variables set directly on the operator
 		env = append(env,
 			corev1.EnvVar{
-				Name:  "KEY",
+				Name:  containerTokenKeyEnvName,
 				Value: r.apiClient.accessTokenKey,
 			},
 			corev1.EnvVar{
-				Name:  "SECRET",
+				Name:  containerTokenSecretEnvName,
 				Value: r.apiClient.accessTokenSecret,
 			},
 		)
