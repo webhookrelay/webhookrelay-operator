@@ -11,9 +11,9 @@ GOLANGCI_LINT = $(BUILD_DIR)/golangci-lint
 OPERATOR_SDK = $(BUILD_DIR)/operator-sdk
 
 LDFLAGS		+= -s -w
-LDFLAGS		+= -X github.com/webhookrelay/webhookrelay-operator/version.Version=$(VERSION)
-LDFLAGS		+= -X github.com/webhookrelay/webhookrelay-operator/version.Revision=$(GIT_REVISION)
-LDFLAGS		+= -X github.com/webhookrelay/webhookrelay-operator/version.BuildDate=$(JOBDATE)
+LDFLAGS		+= -X github.com/webhookrelay/webhookrelay-operator/pkg/version.Version=$(VERSION)
+LDFLAGS		+= -X github.com/webhookrelay/webhookrelay-operator/pkg/version.Revision=$(GIT_REVISION)
+LDFLAGS		+= -X github.com/webhookrelay/webhookrelay-operator/pkg/version.BuildDate=$(JOBDATE)
 
 # Build operator binary
 .PHONY: build
