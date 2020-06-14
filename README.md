@@ -1,5 +1,7 @@
 # Webhook Relay Kubernetes Operator
 
+[![Build Status](https://drone-kr.webrelay.io/api/badges/webhookrelay/webhookrelay-operator/status.svg)](https://drone-kr.webrelay.io/webhookrelay/webhookrelay-operator)
+
 Webhook Relay Operator provides an easy way to receive webhooks to an internal Kubernetes cluster without configuring public IP or load balancer. Perfect for:
 - On-premise deployments 
 - Cloud deployments where public load balancer is not required (single endpoint receiving webhooks and no need to expose the whole server)
