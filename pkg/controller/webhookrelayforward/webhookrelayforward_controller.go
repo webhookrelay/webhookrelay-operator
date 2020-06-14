@@ -6,9 +6,11 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -52,9 +54,10 @@ func Add(mgr manager.Manager) error {
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	cfg := config.MustLoad()
 	return &ReconcileWebhookRelayForward{
-		client: mgr.GetClient(),
-		scheme: mgr.GetScheme(),
-		config: &cfg,
+		client:   mgr.GetClient(),
+		scheme:   mgr.GetScheme(),
+		recorder: mgr.GetEventRecorderFor("webhookrelay-forwarder"),
+		config:   &cfg,
 	}
 }
 
@@ -91,8 +94,9 @@ var _ reconcile.Reconciler = &ReconcileWebhookRelayForward{}
 type ReconcileWebhookRelayForward struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client client.Client
-	scheme *runtime.Scheme
+	client   client.Client
+	scheme   *runtime.Scheme
+	recorder record.EventRecorder
 
 	apiClient *WebhookRelayClient
 	config    *config.Config
@@ -170,6 +174,7 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 		logger.Info("Creating a new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
 		err = r.client.Create(context.TODO(), deployment)
 		if err != nil {
+			r.recorder.Event(instance, corev1.EventTypeWarning, "FailedCreation", err.Error())
 			return err
 		}
 
@@ -188,6 +193,7 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 
 	err = r.client.Update(context.TODO(), patched)
 	if err != nil {
+		r.recorder.Event(instance, corev1.EventTypeWarning, "FailedUpdate", err.Error())
 		return fmt.Errorf("failed to update Deployment: %s", err)
 	}
 
