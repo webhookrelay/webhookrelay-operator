@@ -140,6 +140,39 @@ func getInputsDiff(current, desired []*webhookrelay.Input) *inputsDiff {
 }
 
 func inputEqual(current, desired *webhookrelay.Input) bool {
+	if current.FunctionID != desired.FunctionID {
+		return false
+	}
+	if current.StatusCode != desired.StatusCode {
+		return false
+	}
+	if current.Body != desired.Body {
+		return false
+	}
+
+	if len(current.Headers) != len(desired.Headers) {
+		for k := range current.Headers {
+			if !sliceEqual(current.Headers[k], desired.Headers[k]) {
+				return false
+			}
+		}
+	}
+
+	if current.ResponseFromOutput != desired.ResponseFromOutput {
+		return false
+	}
+
+	if current.CustomDomain != desired.CustomDomain {
+		return false
+	}
+
+	if current.PathPrefix != desired.PathPrefix {
+		return false
+	}
+
+	if current.Description != desired.Description {
+		return false
+	}
 
 	return true
 }
@@ -148,4 +181,16 @@ type inputsDiff struct {
 	create []*webhookrelay.Input
 	update []*webhookrelay.Input
 	delete []*webhookrelay.Input
+}
+
+func sliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, v := range a {
+		if v != b[i] {
+			return false
+		}
+	}
+	return true
 }
