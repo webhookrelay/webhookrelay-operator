@@ -153,6 +153,7 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 		// If configuration fails, we still need to ensure deployment is running, however
 		// we still need to report it
 		requeue, updateErr := r.updateRoutingStatus(
+			logger,
 			forwardv1.RoutingStatusFailed,
 			fmt.Sprintf("encountered errors (%s) while ensuring routing configuration, check your CR spec", err),
 			instance,
@@ -167,7 +168,12 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 
 	} else {
 		// Setting status to Configured
-		requeue, updateErr := r.updateRoutingStatus(forwardv1.RoutingStatusConfigured, "", instance)
+		requeue, updateErr := r.updateRoutingStatus(
+			logger,
+			forwardv1.RoutingStatusConfigured,
+			"",
+			instance,
+		)
 		if updateErr != nil {
 			logger.Error(updateErr, "Failed to update CR status")
 		}
@@ -183,7 +189,7 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 	return reconcileResult, nil
 }
 
-func (r *ReconcileWebhookRelayForward) updateRoutingStatus(status forwardv1.RoutingStatus, message string, instance *forwardv1.WebhookRelayForward) (bool, error) {
+func (r *ReconcileWebhookRelayForward) updateRoutingStatus(logger logr.Logger, status forwardv1.RoutingStatus, message string, instance *forwardv1.WebhookRelayForward) (bool, error) {
 	if instance.Status.RoutingStatus == status && instance.Status.Message == message {
 		return false, nil
 	}
@@ -191,16 +197,26 @@ func (r *ReconcileWebhookRelayForward) updateRoutingStatus(status forwardv1.Rout
 	instance.Status.RoutingStatus = status
 	instance.Status.Message = message
 
+	logger.Info("Updating routing status",
+		"phase", status,
+		"message", message,
+	)
+
 	err := r.client.Status().Update(context.TODO(), instance)
 	return true, err
 }
 
-func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(phase forwardv1.ForwarderPhase, ready bool, instance *forwardv1.WebhookRelayForward) (bool, error) {
+func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(logger logr.Logger, phase forwardv1.ForwarderPhase, ready bool, instance *forwardv1.WebhookRelayForward) (bool, error) {
 	if instance.Status.Phase == phase && instance.Status.Ready == ready {
 		return false, nil
 	}
 	instance.Status.Phase = phase
 	instance.Status.Ready = ready
+
+	logger.Info("Updating deployment status",
+		"phase", phase,
+		"ready", ready,
+	)
 
 	err := r.client.Status().Update(context.TODO(), instance)
 	return true, err
@@ -225,14 +241,14 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 		if err != nil {
 			r.recorder.Event(instance, corev1.EventTypeWarning, "FailedCreation", err.Error())
 
-			_, updateErr := r.updateDeploymentStatus(forwardv1.ForwarderPhaseCreating, false, instance)
+			_, updateErr := r.updateDeploymentStatus(logger, forwardv1.ForwarderPhaseCreating, false, instance)
 			if updateErr != nil {
 				logger.Error(updateErr, "Failed to update CR status")
 			}
 			return err
 		}
 
-		_, updateErr := r.updateDeploymentStatus(forwardv1.ForwarderPhaseRunning, true, instance)
+		_, updateErr := r.updateDeploymentStatus(logger, forwardv1.ForwarderPhaseRunning, true, instance)
 		if updateErr != nil {
 			logger.Error(updateErr, "Failed to update CR status")
 		}
@@ -246,7 +262,8 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 	// compare image, buckets
 	patched, equals := r.checkDeployment(instance, found)
 	if equals {
-		_, updateErr := r.updateDeploymentStatus(forwardv1.ForwarderPhaseRunning, true, instance)
+		// TODO: check replicas 1/1 for Ready status
+		_, updateErr := r.updateDeploymentStatus(logger, forwardv1.ForwarderPhaseRunning, true, instance)
 		if updateErr != nil {
 			logger.Error(updateErr, "Failed to update CR status")
 		}

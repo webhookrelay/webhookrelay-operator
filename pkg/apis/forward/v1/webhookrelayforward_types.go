@@ -135,13 +135,16 @@ const (
 )
 
 // WebhookRelayForwardStatus defines the observed state of WebhookRelayForward
+// +k8s:openapi-gen=true
 type WebhookRelayForwardStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 
+	// Phase indicates agent deployment phase
 	Phase ForwarderPhase `json:"phase,omitempty"`
-	Ready bool           `json:"ready,omitempty"` // whether deployment is ready
+	// Ready indicates whether agent is deployed
+	Ready bool `json:"ready,omitempty"`
 
 	RoutingStatus RoutingStatus `json:"routingStatus,omitempty"`
 	Message       string        `json:"message,omitempty"`
