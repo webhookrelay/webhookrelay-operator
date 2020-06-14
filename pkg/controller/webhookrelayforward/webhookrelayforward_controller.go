@@ -2,6 +2,8 @@ package webhookrelayforward
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -182,35 +184,127 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 	}
 
 	// compare image, buckets
+	patched, equals := r.checkDeployment(instance, found)
+	if equals {
+		// nothing to do
+		// Deployment already exists - don't requeue
+		logger.Info("Deployment already exists and doesn't need to be updated", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+		return nil
+	}
 
-	// Deployment already exists - don't requeue
-	logger.Info("Skip reconcile: Deployment already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+	err = r.client.Update(context.TODO(), patched)
+	if err != nil {
+		return fmt.Errorf("failed to update Deployment: %s", err)
+	}
+
+	logger.Info("Deployment updated")
 
 	return nil
 }
 
-// newDeploymentForCR returns a new Webhook Relay forwarder deployment with the same name/namespace as the cr
-func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookRelayForward) *appsv1.Deployment {
-	labels := map[string]string{
-		"app": cr.Name,
-	}
-	podLabels := map[string]string{
-		"name": "webhookrelay-forwarder",
+// checkDeployment - checks whether deployment is equal, otherwise patches it
+func (r *ReconcileWebhookRelayForward) checkDeployment(cr *forwardv1.WebhookRelayForward, current *appsv1.Deployment) (patched *appsv1.Deployment, equal bool) {
+	// Assume deployment matches the spec
+	equal = true
+	// Creating a deep copy of the existing deployment
+	patched = current.DeepCopy()
+	// Getting a desired deployment and validating:
+	// 1. Image
+	// 2. Environment configuration (secrets, buckets)
+	desiredDeployment := r.newDeploymentForCR(cr)
+
+	if len(current.Spec.Template.Spec.Containers) != len(desiredDeployment.Spec.Template.Spec.Containers) {
+		equal = false
+		patched.Spec.Template.Spec.Containers = desiredDeployment.Spec.Template.Spec.Containers
 	}
 
+	for i := range desiredDeployment.Spec.Template.Spec.Containers {
+
+		if !containersEqual(&current.Spec.Template.Spec.Containers[i], &desiredDeployment.Spec.Template.Spec.Containers[i]) {
+			equal = false
+		}
+
+	}
+
+	// patching containers
+	if !equal {
+		patched.Spec.Template.Spec = desiredDeployment.Spec.Template.Spec
+	}
+
+	return
+}
+
+func containersEqual(r, l *corev1.Container) bool {
+	if r.Image != l.Image {
+		return false
+	}
+	if len(r.Env) != len(l.Env) {
+		return false
+	}
+
+	for i := range r.Env {
+		if r.Env[i].Name != l.Env[i].Name {
+			return false
+		}
+		if r.Env[i].Value != l.Env[i].Value {
+			return false
+		}
+
+		// envVarSourceEqual checking secret ref if set
+		if !envVarSourceEqual(r.Env[i].ValueFrom, l.Env[i].ValueFrom) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func envVarSourceEqual(current, desired *corev1.EnvVarSource) bool {
+	if current == nil && desired == nil {
+		// if not set, nothing to do
+		return true
+	}
+
+	if current == nil || desired == nil {
+		return false
+	}
+
+	if !reflect.DeepEqual(current, desired) {
+		return false
+	}
+
+	// var (
+	// 	desiredSecretRefName string
+	// 	desiredSecretRefKey  string
+	// )
+
+	// if desired.SecretKeyRef != nil {
+	// 	desiredSecretRefName = desired.SecretKeyRef.Name
+	// 	desiredSecretRefKey = desired.SecretKeyRef.Key
+	// }
+
+	// if current.SecretKeyRef == nil {
+	// 	return false
+	// }
+
+	// if current.SecretKeyRef.Name != desiredSecretRefName {
+	// 	return false
+	// }
+
+	// if current.SecretKeyRef.Key != desiredSecretRefKey {
+	// 	return false
+	// }
+
+	return true
+}
+
+// envForDeployment generates env configuration for the deployment based on the spec and credentials
+func (r *ReconcileWebhookRelayForward) envForDeployment(cr *forwardv1.WebhookRelayForward) []corev1.EnvVar {
 	var buckets []string
 	for idx := range cr.Spec.Buckets {
 		buckets = append(buckets, cr.Spec.Buckets[idx].Ref)
 	}
 
-	image := cr.Spec.Image
-	if image == "" {
-		image = r.config.Image
-	}
-
-	// TODO: refactor this part
-	// as a mounted secret
-	// for access token https://github.com/webhookrelay/webhookrelay-operator/issues/1
 	env := []corev1.EnvVar{
 		{
 			Name:  containerBucketsEnvName,
@@ -257,6 +351,30 @@ func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookR
 			},
 		)
 	}
+
+	return env
+}
+
+// newDeploymentForCR returns a new Webhook Relay forwarder deployment with the same name/namespace as the cr
+func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookRelayForward) *appsv1.Deployment {
+	labels := map[string]string{
+		"app": cr.Name,
+	}
+	podLabels := map[string]string{
+		"name": "webhookrelay-forwarder",
+	}
+
+	var buckets []string
+	for idx := range cr.Spec.Buckets {
+		buckets = append(buckets, cr.Spec.Buckets[idx].Ref)
+	}
+
+	image := cr.Spec.Image
+	if image == "" {
+		image = r.config.Image
+	}
+
+	env := r.envForDeployment(cr)
 
 	podTemplateSpec := corev1.PodTemplateSpec{
 		Spec: corev1.PodSpec{
