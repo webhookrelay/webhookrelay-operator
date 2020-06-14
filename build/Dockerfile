@@ -24,9 +24,6 @@ ENV OPERATOR=/usr/local/bin/webhookrelay-operator \
     USER_UID=1001 \
     USER_NAME=webhookrelay-operator
 
-# install operator binary
-COPY build/_output/bin/webhookrelay-operator ${OPERATOR}
-
 RUN mkdir -p /licenses
 COPY --from=build /go/src/github.com/webhookrelay/webhookrelay-operator/LICENSE /licenses/
 
