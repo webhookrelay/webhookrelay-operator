@@ -28,7 +28,7 @@ import (
 var log = logf.Log.WithName("controller_webhookrelayforward")
 
 const (
-	reconcilePeriodSeconds = 15
+	reconcilePeriodSeconds = 5
 
 	// containerTokenKeyEnvName and containerTokenSecretEnvName used
 	// to specify authentication details for the container
@@ -112,8 +112,11 @@ type ReconcileWebhookRelayForward struct {
 func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	logger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
+	logger.Info("reconciling")
+
 	reconcilePeriod := reconcilePeriodSeconds * time.Second
 	reconcileResult := reconcile.Result{RequeueAfter: reconcilePeriod}
+	reconcileImmediately := reconcile.Result{RequeueAfter: time.Second}
 
 	// Fetch the WebhookRelayForward instance
 	instance := &forwardv1.WebhookRelayForward{}
@@ -145,19 +148,65 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 		logger.Info("API client initialized")
 	}
 
-	if err := r.reconcile(logger, instance); err != nil {
-		logger.Info("Reconcile failed", "error", err)
-		return reconcileResult, nil
+	if err := r.ensureRoutingConfiguration(logger, instance); err != nil {
+		logger.Error(err, "encountered errors while ensuring routing configuration, check your CR spec")
+		// If configuration fails, we still need to ensure deployment is running, however
+		// we still need to report it
+		requeue, updateErr := r.updateRoutingStatus(
+			forwardv1.RoutingStatusFailed,
+			fmt.Sprintf("encountered errors (%s) while ensuring routing configuration, check your CR spec", err),
+			instance,
+		)
+		if updateErr != nil {
+			logger.Error(updateErr, "Failed to update CR status")
+		}
+		if requeue {
+			logger.Info("routing status updated, requeuing")
+			return reconcileImmediately, updateErr
+		}
+
+	} else {
+		// Setting status to Configured
+		requeue, updateErr := r.updateRoutingStatus(forwardv1.RoutingStatusConfigured, "", instance)
+		if updateErr != nil {
+			logger.Error(updateErr, "Failed to update CR status")
+		}
+		if requeue {
+			logger.Info("routing status updated, requeuing")
+			return reconcileImmediately, updateErr
+		}
 	}
 
+	if err := r.reconcile(logger, instance); err != nil {
+		logger.Info("Reconcile failed", "error", err)
+	}
 	return reconcileResult, nil
 }
 
-func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
-
-	if err := r.ensureRoutingConfiguration(logger, instance); err != nil {
-		logger.Error(err, "encountered errors while ensuring routing configuration, check your CR spec")
+func (r *ReconcileWebhookRelayForward) updateRoutingStatus(status forwardv1.RoutingStatus, message string, instance *forwardv1.WebhookRelayForward) (bool, error) {
+	if instance.Status.RoutingStatus == status && instance.Status.Message == message {
+		return false, nil
 	}
+
+	instance.Status.RoutingStatus = status
+	instance.Status.Message = message
+
+	err := r.client.Status().Update(context.TODO(), instance)
+	return true, err
+}
+
+func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(phase forwardv1.ForwarderPhase, ready bool, instance *forwardv1.WebhookRelayForward) (bool, error) {
+	if instance.Status.Phase == phase && instance.Status.Ready == ready {
+		return false, nil
+	}
+	instance.Status.Phase = phase
+	instance.Status.Ready = ready
+
+	err := r.client.Status().Update(context.TODO(), instance)
+	return true, err
+}
+
+func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
 
 	// Define a new Deployment object
 	deployment := r.newDeploymentForCR(instance)
@@ -175,7 +224,17 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 		err = r.client.Create(context.TODO(), deployment)
 		if err != nil {
 			r.recorder.Event(instance, corev1.EventTypeWarning, "FailedCreation", err.Error())
+
+			_, updateErr := r.updateDeploymentStatus(forwardv1.ForwarderPhaseCreating, false, instance)
+			if updateErr != nil {
+				logger.Error(updateErr, "Failed to update CR status")
+			}
 			return err
+		}
+
+		_, updateErr := r.updateDeploymentStatus(forwardv1.ForwarderPhaseRunning, true, instance)
+		if updateErr != nil {
+			logger.Error(updateErr, "Failed to update CR status")
 		}
 
 		// Deployment created successfully - don't requeue
@@ -187,6 +246,11 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 	// compare image, buckets
 	patched, equals := r.checkDeployment(instance, found)
 	if equals {
+		_, updateErr := r.updateDeploymentStatus(forwardv1.ForwarderPhaseRunning, true, instance)
+		if updateErr != nil {
+			logger.Error(updateErr, "Failed to update CR status")
+		}
+
 		// Deployment already exists - don't requeue
 		return nil
 	}

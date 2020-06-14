@@ -187,12 +187,17 @@ spec:
           status:
             description: WebhookRelayForwardStatus defines the observed state of WebhookRelayForward
             properties:
+              message:
+                type: string
               phase:
                 description: ForwarderPhase is the phase of the Webhook Relay forwarder
                   node at a given point in time.
                 type: string
               ready:
                 type: boolean
+              routingStatus:
+                description: RoutingStatus is configuration status
+                type: string
             type: object
         type: object
     served: true

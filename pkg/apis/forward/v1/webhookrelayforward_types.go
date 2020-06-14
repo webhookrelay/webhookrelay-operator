@@ -122,7 +122,16 @@ const (
 	ForwarderPhaseRunning     ForwarderPhase = "Running"
 	ForwarderPhaseCreating    ForwarderPhase = "Creating"
 	ForwarderPhasePending     ForwarderPhase = "Pending"
-	ForwarderPhaseTerminating ForwarderPhase = "Terminating"
+	ForwarderPhaseTerminating ForwarderPhase = "Terminating" // TODO: needs finalizer
+)
+
+// RoutingStatus is configuration status
+type RoutingStatus string
+
+// Constants for operator routing configuration status
+const (
+	RoutingStatusConfigured RoutingStatus = "configured"
+	RoutingStatusFailed     RoutingStatus = "failed"
 )
 
 // WebhookRelayForwardStatus defines the observed state of WebhookRelayForward
@@ -133,6 +142,9 @@ type WebhookRelayForwardStatus struct {
 
 	Phase ForwarderPhase `json:"phase,omitempty"`
 	Ready bool           `json:"ready,omitempty"` // whether deployment is ready
+
+	RoutingStatus RoutingStatus `json:"routingStatus,omitempty"`
+	Message       string        `json:"message,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
