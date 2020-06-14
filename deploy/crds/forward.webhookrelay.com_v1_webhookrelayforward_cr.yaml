@@ -7,10 +7,12 @@ spec:
   secretRefName: whr-credentials
   secretRefNamespace: ""
   buckets:
-    - name: k8s-operator
-      inputs:
-        - name: mailgun
-          description: "mailgun domain"
-          responseBody: "OK"
-          responseStatusCode: 201
-
+  - name: k8s-operator
+    inputs:
+    - name: mailgun
+      description: "mailgun domain"
+      responseBody: "OK"
+      responseStatusCode: 201
+    outputs:
+    - name: mail-processor
+      destination: http://mail-processor:5050/webhooks
