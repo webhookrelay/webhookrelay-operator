@@ -54,8 +54,6 @@ spec:
                       items:
                         description: InputSpec defines an input that belong to a bucket
                         properties:
-                          body:
-                            type: string
                           customDomain:
                             description: CustomDomain can be used to assign a permanent
                               domain name for your input such as example.hooks.webhookrelay.com
@@ -63,18 +61,11 @@ spec:
                           description:
                             description: Description can be any string
                             type: string
-                          function_id:
+                          functionId:
                             description: FunctionID attaches function to this input.
                               Functions on inputs can modify responses to the caller
                               and modify requests that are then passed to each output.
                             type: string
-                          headers:
-                            additionalProperties:
-                              items:
-                                type: string
-                              type: array
-                            description: Static response configuration
-                            type: object
                           name:
                             type: string
                           pathPrefix:
@@ -83,15 +74,22 @@ spec:
                               calls from: petshop.com/dogs -> are forwarded to [dogs
                               store] petshop.com/cats -> are forwarded to [cats store]'
                             type: string
+                          responseBody:
+                            type: string
                           responseFromOutput:
                             description: Dynamic response configuration either output
                               name, ID or "anyOutput" to indicate that the first response
                               from any output is good enough. Defaults to empty string
                             type: string
-                          statusCode:
+                          responseHeaders:
+                            additionalProperties:
+                              items:
+                                type: string
+                              type: array
+                            description: Static response configuration
+                            type: object
+                          responseStatusCode:
                             type: integer
-                        required:
-                        - function_id
                         type: object
                       type: array
                     name:
@@ -138,9 +136,7 @@ spec:
                               for the response
                             type: integer
                         required:
-                        - description
                         - destination
-                        - timeout
                         type: object
                       type: array
                   type: object

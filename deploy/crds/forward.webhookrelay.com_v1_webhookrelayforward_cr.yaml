@@ -8,5 +8,9 @@ spec:
   secretRefNamespace: ""
   buckets:
     - name: k8s-operator
-      
+      inputs:
+        - name: mailgun
+          description: "mailgun domain"
+          responseBody: "OK"
+          responseStatusCode: 201
 

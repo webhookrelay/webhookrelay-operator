@@ -61,12 +61,12 @@ type InputSpec struct {
 	// FunctionID attaches function to this input. Functions on inputs can modify
 	// responses to the caller and modify requests that are then passed to each
 	// output.
-	FunctionID string `json:"function_id"`
+	FunctionID string `json:"functionId,omitempty"`
 
 	// Static response configuration
-	ResponseHeaders    map[string][]string `json:"headers,omitempty"`
-	ResponseStatusCode int                 `json:"statusCode,omitempty"`
-	ResponseBody       string              `json:"body,omitempty"`
+	ResponseHeaders    map[string][]string `json:"responseHeaders,omitempty"`
+	ResponseStatusCode int                 `json:"responseStatusCode,omitempty"`
+	ResponseBody       string              `json:"responseBody,omitempty"`
 
 	// Dynamic response configuration
 	// either output name, ID or "anyOutput" to indicate that the first response
@@ -107,10 +107,10 @@ type OutputSpec struct {
 	Internal *bool `json:"internal,omitempty"`
 
 	// Timeout specifies how long agent should wait for the response
-	Timeout int `json:"timeout"`
+	Timeout int `json:"timeout,omitempty"`
 
 	// Description can be any string
-	Description string `json:"description"`
+	Description string `json:"description,omitempty"`
 }
 
 // ForwarderPhase is the phase of the Webhook Relay forwarder node at a given point in time.
