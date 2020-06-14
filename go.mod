@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/go-logr/logr v0.1.0
+	github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/operator-framework/operator-sdk v0.18.1
 	github.com/spf13/pflag v1.0.5
