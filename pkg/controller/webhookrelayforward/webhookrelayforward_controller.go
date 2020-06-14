@@ -137,9 +137,10 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 		r.apiClient.instanceGeneration != instance.GetGeneration() ||
 		r.apiClient.instanceUID != instance.GetUID() {
 		if err := r.setClientForCluster(instance); err != nil {
-			log.Error(err, "Failed to configure Webhook Relay API client, cannot continue")
+			logger.Error(err, "Failed to configure Webhook Relay API client, cannot continue")
 			return reconcileResult, err
 		}
+		logger.Info("API client initialized")
 	}
 
 	if err := r.reconcile(logger, instance); err != nil {
@@ -151,6 +152,10 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 }
 
 func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
+
+	if err := r.ensureRoutingConfiguration(logger, instance); err != nil {
+		logger.Error(err, "encountered errors while ensuring routing configuration, check your CR spec")
+	}
 
 	// Define a new Deployment object
 	deployment := r.newDeploymentForCR(instance)
