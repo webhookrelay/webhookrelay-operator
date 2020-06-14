@@ -1,0 +1,37 @@
+---
+kind: pipeline
+name: default
+
+platform:
+  os: linux
+  arch: amd64
+
+workspace:
+  base: /go
+  path: src/github.com/webhookrelay/webhookrelay-operator
+
+steps:
+- name: test
+  pull: default
+  image: golang
+  commands:
+  - make test
+
+- name: build
+  pull: default
+  image: golang
+  commands:
+  - make build
+
+- name: publish
+  pull: default
+  image: plugins/docker
+  settings:
+    auto_tag: true
+    repo: webhookrelay/webhookrelay-operator
+    dockerfile: build/Dockerfile
+    password:
+      from_secret: docker_password
+    username:
+      from_secret: docker_username
+
