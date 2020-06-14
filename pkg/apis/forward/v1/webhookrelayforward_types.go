@@ -1,6 +1,7 @@
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -27,6 +28,9 @@ type WebhookRelayForwardSpec struct {
 	// Buckets to manage and subscribe to. Each CR can control one or more buckets. Buckets can be inspected
 	// and manually created via Web UI here https://my.webhookrelay.com/buckets
 	Buckets []BucketSpec `json:"buckets"`
+
+	// Resources is to set the resource requirements of the Webhook Relay agent container`.
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // BucketSpec defines a bucket that groups one or more inputs (public endpoints) and
