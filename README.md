@@ -15,6 +15,5 @@ Current operator project scope:
 - [ ] Provision separate access tokens for webhookrelayd containers with disabled API access (only subscribe capability)
 - [x] Ensure buckets are created 
 - [x] Ensure inputs are configured (public endpoints)
-- [ ] Ensure outputs are configured (forwarding destinations)
-- [ ] Generic diff & sync mechanism for all resources
+- [x] Ensure outputs are configured (forwarding destinations)
 - [ ] K8s events on taken actions
