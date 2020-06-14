@@ -110,7 +110,38 @@ func getInputsDiff(current, desired []*webhookrelay.Input) *inputsDiff {
 
 	diff := &inputsDiff{}
 
+	currentMap := make(map[string]*webhookrelay.Input)
+
+	for i := range current {
+		currentMap[current[i].Name] = current[i]
+	}
+
+	for i := range desired {
+		currentInput, ok := currentMap[desired[i].Name]
+		if !ok {
+			diff.create = append(diff.create, desired[i])
+			continue
+		}
+		if inputEqual(currentInput, desired[i]) {
+			// Nothing to do
+			continue
+		}
+		// Setting ID and adding to the update list
+		desired[i].ID = currentInput.ID
+		diff.update = append(diff.update, desired[i])
+	}
+
+	// TODO: check for inputs to delete, however this can be tricky and
+	// dangerous as it's better to have unused inputs than delete an input
+	// that's already being used by something and then have to manually update
+	// 3rd party service with the new ID
+
 	return diff
+}
+
+func inputEqual(current, desired *webhookrelay.Input) bool {
+
+	return true
 }
 
 type inputsDiff struct {
