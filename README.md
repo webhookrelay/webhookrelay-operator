@@ -13,7 +13,8 @@ Current operator project scope:
 - [x] Deploy webhook forwarding agents with configured buckets
 - [x] Read credentials from secrets and mount secrets to webhookrelayd containers
 - [ ] Provision separate access tokens for webhookrelayd containers with disabled API access (only subscribe capability)
-- [ ] Ensure buckets are created 
-- [ ] Ensure inputs are configured (public endpoints)
+- [x] Ensure buckets are created 
+- [x] Ensure inputs are configured (public endpoints)
 - [ ] Ensure outputs are configured (forwarding destinations)
+- [ ] Generic diff & sync mechanism for all resources
 - [ ] K8s events on taken actions
