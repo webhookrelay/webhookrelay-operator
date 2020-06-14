@@ -7,6 +7,6 @@ spec:
   secretRefName: whr-credentials
   secretRefNamespace: ""
   buckets:
-    - ref: k8s-operator
+    - name: k8s-operator
       
 

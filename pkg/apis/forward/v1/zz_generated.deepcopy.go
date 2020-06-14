@@ -168,6 +168,7 @@ func (in *WebhookRelayForwardSpec) DeepCopyInto(out *WebhookRelayForwardSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	in.Resources.DeepCopyInto(&out.Resources)
 	return
 }
 

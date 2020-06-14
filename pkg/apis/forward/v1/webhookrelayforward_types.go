@@ -36,10 +36,10 @@ type WebhookRelayForwardSpec struct {
 // BucketSpec defines a bucket that groups one or more inputs (public endpoints) and
 // one ore more outputs (where the webhooks should be routed)
 type BucketSpec struct {
-	// Ref is the name or the ID of a bucket that can be reused
+	// Name is the name of a bucket that can be reused
 	// (if it already exists) or that will be created by the operator. Buckets
 	// act as a grouping mechanism for Inputs and Outputs
-	Ref string `json:"ref,omitempty"`
+	Name string `json:"name,omitempty"`
 
 	Description string `json:"description,omitempty"`
 

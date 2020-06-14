@@ -27,12 +27,12 @@ func (r *ReconcileWebhookRelayForward) ensureRoutingConfiguration(logger logr.Lo
 	for idx := range instance.Spec.Buckets {
 		err = r.ensureBucketInputs(logger, instance, &instance.Spec.Buckets[idx])
 		if err != nil {
-			logger.Error(err, "failed to configure bucket '%s' inputs", instance.Spec.Buckets[idx].Ref)
+			logger.Error(err, "failed to configure bucket '%s' inputs", instance.Spec.Buckets[idx].Name)
 		}
 
 		err = r.ensureBucketOutputs(logger, instance, &instance.Spec.Buckets[idx])
 		if err != nil {
-			logger.Error(err, "failed to configure bucket '%s' outputs", instance.Spec.Buckets[idx].Ref)
+			logger.Error(err, "failed to configure bucket '%s' outputs", instance.Spec.Buckets[idx].Name)
 		}
 	}
 
@@ -56,17 +56,17 @@ func (r *ReconcileWebhookRelayForward) ensureBucketConfiguration(logger logr.Log
 			instance.Spec.Buckets[i].Description = getBucketDescription(instance)
 		}
 
-		existingBucket, ok := getBucketByRef(instance.Spec.Buckets[i].Ref, buckets)
+		existingBucket, ok := getBucketByName(instance.Spec.Buckets[i].Name, buckets)
 		if !ok {
 			// Create a new bucket based on the provided BucketSpec
 			// TODO: add authentication settings to CRD (https://github.com/webhookrelay/webhookrelay-operator/issues/2)
 			_, err = r.apiClient.client.CreateBucket(&webhookrelay.BucketCreateOptions{
-				Name:        instance.Spec.Buckets[i].Ref,
+				Name:        instance.Spec.Buckets[i].Name,
 				Description: instance.Spec.Buckets[i].Description,
 			})
 			if err != nil {
 				logger.Error(err, "failed to create bucket",
-					"bucket_ref", instance.Spec.Buckets[i].Ref,
+					"bucket_ref", instance.Spec.Buckets[i].Name,
 				)
 			}
 			continue
@@ -82,11 +82,11 @@ func (r *ReconcileWebhookRelayForward) ensureBucketConfiguration(logger logr.Log
 		_, err = r.apiClient.client.UpdateBucket(patchBucketFromSpec(existingBucket, &instance.Spec.Buckets[i]))
 		if err != nil {
 			logger.Error(err, "failed to update bucket",
-				"bucket_ref", instance.Spec.Buckets[i].Ref,
+				"bucket_ref", instance.Spec.Buckets[i].Name,
 			)
 		} else {
 			logger.Info("bucket updated to match the spec",
-				"bucket_ref", instance.Spec.Buckets[i].Ref,
+				"bucket_ref", instance.Spec.Buckets[i].Name,
 			)
 		}
 
@@ -114,9 +114,9 @@ func getBucketDescription(instance *forwardv1.WebhookRelayForward) string {
 	return fmt.Sprintf("Auto-created bucket by the operator for %s/%s", instance.GetNamespace(), instance.GetName())
 }
 
-func getBucketByRef(ref string, buckets []*webhookrelay.Bucket) (*webhookrelay.Bucket, bool) {
+func getBucketByName(name string, buckets []*webhookrelay.Bucket) (*webhookrelay.Bucket, bool) {
 	for i := range buckets {
-		if buckets[i].Name == ref || buckets[i].ID == ref {
+		if buckets[i].Name == name {
 			return buckets[i], true
 		}
 	}

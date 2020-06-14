@@ -94,6 +94,11 @@ spec:
                         - function_id
                         type: object
                       type: array
+                    name:
+                      description: Name is the name of a bucket that can be reused
+                        (if it already exists) or that will be created by the operator.
+                        Buckets act as a grouping mechanism for Inputs and Outputs
+                      type: string
                     outputs:
                       description: Outputs are destinations where webhooks/API requests
                         should be forwarded.
@@ -138,17 +143,38 @@ spec:
                         - timeout
                         type: object
                       type: array
-                    ref:
-                      description: Ref is the name or the ID of a bucket that can
-                        be reused (if it already exists) or that will be created by
-                        the operator. Buckets act as a grouping mechanism for Inputs
-                        and Outputs
-                      type: string
                   type: object
                 type: array
               image:
                 description: Image is webhookrelayd container, defaults to webhookrelay/webhookrelayd:latest
                 type: string
+              resources:
+                description: Resources is to set the resource requirements of the
+                  Webhook Relay agent container`.
+                properties:
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: 'Limits describes the maximum amount of compute resources
+                      allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                    type: object
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: 'Requests describes the minimum amount of compute
+                      resources required. If Requests is omitted for a container,
+                      it defaults to Limits if that is explicitly specified, otherwise
+                      to an implementation-defined value. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                    type: object
+                type: object
               secretRefName:
                 description: 'SecretRefName is the name of the secret object that
                   contains generated token from https://my.webhookrelay.com/tokens

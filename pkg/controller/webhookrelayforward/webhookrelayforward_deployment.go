@@ -111,7 +111,7 @@ func envVarSourceEqual(current, desired *corev1.EnvVarSource) bool {
 func (r *ReconcileWebhookRelayForward) envForDeployment(cr *forwardv1.WebhookRelayForward) []corev1.EnvVar {
 	var buckets []string
 	for idx := range cr.Spec.Buckets {
-		buckets = append(buckets, cr.Spec.Buckets[idx].Ref)
+		buckets = append(buckets, cr.Spec.Buckets[idx].Name)
 	}
 
 	env := []corev1.EnvVar{
@@ -171,11 +171,6 @@ func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookR
 	}
 	podLabels := map[string]string{
 		"name": "webhookrelay-forwarder",
-	}
-
-	var buckets []string
-	for idx := range cr.Spec.Buckets {
-		buckets = append(buckets, cr.Spec.Buckets[idx].Ref)
 	}
 
 	image := cr.Spec.Image
