@@ -57,7 +57,7 @@ func (c *bucketsCache) Get(ref string) (*webhookrelay.Bucket, bool) {
 		existing, ok := c.items[ref]
 		if ok {
 			cp := new(webhookrelay.Bucket)
-			err := copier.Copy(existing, cp)
+			err := copier.Copy(cp, existing)
 			if err != nil {
 				return existing, true
 			}
@@ -70,7 +70,7 @@ func (c *bucketsCache) Get(ref string) (*webhookrelay.Bucket, bool) {
 	for _, v := range c.items {
 		if v.ID == ref {
 			cp := new(webhookrelay.Bucket)
-			err := copier.Copy(v, cp)
+			err := copier.Copy(cp, v)
 			if err != nil {
 				return v, true
 			}
