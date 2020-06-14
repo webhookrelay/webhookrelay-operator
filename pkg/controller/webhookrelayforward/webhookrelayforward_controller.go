@@ -182,9 +182,7 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 	// compare image, buckets
 	patched, equals := r.checkDeployment(instance, found)
 	if equals {
-		// nothing to do
 		// Deployment already exists - don't requeue
-		logger.Info("Deployment already exists and doesn't need to be updated", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
 		return nil
 	}
 

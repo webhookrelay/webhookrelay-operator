@@ -33,8 +33,3 @@ func (r *ReconcileWebhookRelayForward) ensureRoutingConfiguration(logger logr.Lo
 
 	return nil
 }
-
-func (r *ReconcileWebhookRelayForward) ensureBucketOutputs(logger logr.Logger, instance *forwardv1.WebhookRelayForward, bucket *forwardv1.BucketSpec) error {
-
-	return nil
-}
