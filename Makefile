@@ -3,6 +3,8 @@ GIT_REVISION	= $(shell git rev-parse --short HEAD)
 VERSION		?= $(shell git describe --tags --abbrev=0)
 OPERATOR_IMAGE ?= webhookrelay/webhookrelay-operator:test
 
+GO_ENV = GOOS=linux CGO_ENABLED=0
+GO_BUILD_CMD = go build
 SDK_VERSION = v0.18.1
 MACHINE = $(shell uname -m)
 BUILD_DIR = "build"
