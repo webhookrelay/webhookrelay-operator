@@ -32,6 +32,8 @@ type WebhookRelayClient struct {
 	// API access
 	accessTokenKey    string
 	accessTokenSecret string
+
+	bucketsCache *bucketsCache
 }
 
 func (r *ReconcileWebhookRelayForward) setClientForCluster(instance *forwardv1.WebhookRelayForward) error {
@@ -84,6 +86,7 @@ func (r *ReconcileWebhookRelayForward) setClientForCluster(instance *forwardv1.W
 		// setting credentials that can be reused for deployments
 		accessTokenKey:    relayKey,
 		accessTokenSecret: relaySecret,
+		bucketsCache:      newBucketsCache(),
 	}
 
 	return nil
