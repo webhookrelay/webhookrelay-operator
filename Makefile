@@ -28,6 +28,11 @@ go-gen:
 	$(OPERATOR_SDK) generate k8s
 	$(OPERATOR_SDK) generate crds
 
+# Run tests
+test:
+	go get github.com/mfridman/tparse
+	go test -json -v `go list ./... | egrep -v /tests` -cover | tparse -all -smallscreen
+
 ## Start local Webhook Relay operator
 local-run:
 	OPERATOR_NAME=webhookrelay-operator $(OPERATOR_SDK) run local --operator-flags="--zap-devel"
