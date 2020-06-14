@@ -1,3 +1,8 @@
+JOBDATE		?= $(shell date -u +%Y-%m-%dT%H%M%SZ)
+GIT_REVISION	= $(shell git rev-parse --short HEAD)
+VERSION		?= $(shell git describe --tags --abbrev=0)
+OPERATOR_IMAGE ?= webhookrelay/webhookrelay-operator:test
+
 SDK_VERSION = v0.18.1
 MACHINE = $(shell uname -m)
 BUILD_DIR = "build"
@@ -5,6 +10,18 @@ YQ = $(BUILD_DIR)/yq
 GOLANGCI_LINT = $(BUILD_DIR)/golangci-lint
 OPERATOR_SDK = $(BUILD_DIR)/operator-sdk
 
+LDFLAGS		+= -s -w
+LDFLAGS		+= -X github.com/webhookrelay/webhookrelay-operator/version.Version=$(VERSION)
+LDFLAGS		+= -X github.com/webhookrelay/webhookrelay-operator/version.Revision=$(GIT_REVISION)
+LDFLAGS		+= -X github.com/webhookrelay/webhookrelay-operator/version.BuildDate=$(JOBDATE)
+
+# Build operator binary
+.PHONY: build
+build:
+	@echo "Building Webhook Relay operator"
+	$(GO_ENV) $(GO_BUILD_CMD) -ldflags "$(LDFLAGS)" \
+		-o ./build/_output/bin/webhookrelay-operator \
+		./cmd/manager
 
 # Generate APIs, CRD specs and CRD clientset.
 go-gen:
@@ -13,7 +30,10 @@ go-gen:
 
 ## Start local Webhook Relay operator
 local-run:
-	OPERATOR_NAME=webhookrelay-operator $(OPERATOR_SDK) run local --operator-flags="--zap-devel" 
+	OPERATOR_NAME=webhookrelay-operator $(OPERATOR_SDK) run local --operator-flags="--zap-devel"
+
+image-operator:
+	docker build . -f build/Dockerfile -t $(OPERATOR_IMAGE)
 
 ##############################
 #     Third-party tools      #
