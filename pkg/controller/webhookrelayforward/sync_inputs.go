@@ -37,13 +37,10 @@ func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, in
 
 	// Create inputs that need to be created
 	for idx := range diff.create {
-		_, err = r.apiClient.client.CreateInput(diff.create[idx])
-		if err != nil {
-			logger.Error(err, "failed to create input")
-		}
-	}
-
-	for idx := range diff.create {
+		logger.Info("creating input",
+			"input_id", diff.create[idx].ID,
+			"input_name", diff.create[idx].Name,
+		)
 		_, err = r.apiClient.client.CreateInput(diff.create[idx])
 		if err != nil {
 			logger.Error(err, "failed to create input")
@@ -51,6 +48,10 @@ func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, in
 	}
 
 	for idx := range diff.update {
+		logger.Info("updating input",
+			"input_id", diff.update[idx].ID,
+			"input_name", diff.update[idx].Name,
+		)
 		_, err = r.apiClient.client.UpdateInput(diff.update[idx])
 		if err != nil {
 			logger.Error(err, "failed to update input",
@@ -60,6 +61,10 @@ func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, in
 	}
 
 	for idx := range diff.delete {
+		logger.Info("deleting input",
+			"input_id", diff.delete[idx].ID,
+			"input_name", diff.delete[idx].Name,
+		)
 		err = r.apiClient.client.DeleteInput(&webhookrelay.InputDeleteOptions{
 			Bucket: diff.delete[idx].BucketID,
 			Input:  diff.delete[idx].ID,
@@ -76,7 +81,29 @@ func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, in
 
 func desiredInputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucket) []*webhookrelay.Input {
 
-	return nil
+	var desired []*webhookrelay.Input
+
+	for i := range bucketSpec.Inputs {
+		desired = append(desired, inputSpecToInput(&bucketSpec.Inputs[i], bucket))
+	}
+
+	return desired
+}
+
+func inputSpecToInput(spec *forwardv1.InputSpec, bucket *webhookrelay.Bucket) *webhookrelay.Input {
+	return &webhookrelay.Input{
+		Name:       spec.Name,
+		BucketID:   bucket.ID,
+		FunctionID: spec.FunctionID,
+		Headers:    spec.ResponseHeaders,
+		StatusCode: spec.ResponseStatusCode,
+		Body:       spec.ResponseBody,
+
+		ResponseFromOutput: spec.ResponseFromOutput,
+		CustomDomain:       spec.CustomDomain,
+		PathPrefix:         spec.PathPrefix,
+		Description:        spec.Description,
+	}
 }
 
 func getInputsDiff(current, desired []*webhookrelay.Input) *inputsDiff {
