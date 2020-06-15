@@ -200,15 +200,17 @@ func (r *ReconcileWebhookRelayForward) updateRoutingStatus(logger logr.Logger, s
 		return false, nil
 	}
 
-	instance.Status.RoutingStatus = status
-	instance.Status.Message = message
+	patch := instance.DeepCopy()
+
+	patch.Status.RoutingStatus = status
+	patch.Status.Message = message
 
 	logger.Info("Updating routing status",
 		"phase", status,
 		"message", message,
 	)
 
-	err := r.client.Status().Update(context.TODO(), instance)
+	err := r.client.Status().Patch(context.TODO(), patch, client.MergeFrom(instance))
 	return true, err
 }
 
@@ -216,15 +218,18 @@ func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(logger logr.Logger
 	if instance.Status.AgentStatus == status && instance.Status.Ready == ready {
 		return false, nil
 	}
-	instance.Status.AgentStatus = status
-	instance.Status.Ready = ready
+
+	patch := instance.DeepCopy()
+
+	patch.Status.AgentStatus = status
+	patch.Status.Ready = ready
 
 	logger.Info("Updating deployment status",
 		"status", status,
 		"ready", ready,
 	)
 
-	err := r.client.Status().Update(context.TODO(), instance)
+	err := r.client.Status().Patch(context.TODO(), patch, client.MergeFrom(instance))
 	return true, err
 }
 

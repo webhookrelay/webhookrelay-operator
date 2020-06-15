@@ -7,10 +7,6 @@ import (
 
 // WebhookRelayForwardSpec defines the desired state of WebhookRelayForward
 type WebhookRelayForwardSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
-	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-
 	// SecretRefName is the name of the secret object that contains
 	// generated token from https://my.webhookrelay.com/tokens
 	// secret should have two fields:
