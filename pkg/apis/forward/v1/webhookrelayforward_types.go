@@ -113,16 +113,15 @@ type OutputSpec struct {
 	Description string `json:"description,omitempty"`
 }
 
-// ForwarderPhase is the phase of the Webhook Relay forwarder node at a given point in time.
-type ForwarderPhase string
+// AgentStatus is the phase of the Webhook Relay forwarder node at a given point in time.
+type AgentStatus string
 
 // Constants for operator defaults values and different phases.
 const (
-	ForwarderPhaseInitial     ForwarderPhase = ""
-	ForwarderPhaseRunning     ForwarderPhase = "Running"
-	ForwarderPhaseCreating    ForwarderPhase = "Creating"
-	ForwarderPhasePending     ForwarderPhase = "Pending"
-	ForwarderPhaseTerminating ForwarderPhase = "Terminating" // TODO: needs finalizer
+	AgentStatusInitial     AgentStatus = ""
+	AgentStatusRunning     AgentStatus = "Running"
+	AgentStatusCreating    AgentStatus = "Creating"
+	AgentStatusTerminating AgentStatus = "Terminating" // TODO: needs finalizer
 )
 
 // RoutingStatus is configuration status
@@ -130,8 +129,8 @@ type RoutingStatus string
 
 // Constants for operator routing configuration status
 const (
-	RoutingStatusConfigured RoutingStatus = "configured"
-	RoutingStatusFailed     RoutingStatus = "failed"
+	RoutingStatusConfigured RoutingStatus = "Configured"
+	RoutingStatusFailed     RoutingStatus = "Failed"
 )
 
 // WebhookRelayForwardStatus defines the observed state of WebhookRelayForward
@@ -141,8 +140,8 @@ type WebhookRelayForwardStatus struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 
-	// Phase indicates agent deployment phase
-	Phase ForwarderPhase `json:"phase,omitempty"`
+	// AgentStatus indicates agent deployment status
+	AgentStatus AgentStatus `json:"agentStatus,omitempty"`
 	// Ready indicates whether agent is deployed
 	Ready bool `json:"ready,omitempty"`
 
