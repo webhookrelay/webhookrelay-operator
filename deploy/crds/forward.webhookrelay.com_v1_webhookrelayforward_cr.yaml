@@ -1,7 +1,7 @@
 apiVersion: forward.webhookrelay.com/v1
 kind: WebhookRelayForward
 metadata:
-  name: example-webhookrelayforward
+  name: example-forward
 spec:
   # Add fields here
   secretRefName: whr-credentials
