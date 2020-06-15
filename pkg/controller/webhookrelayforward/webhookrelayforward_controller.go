@@ -3,6 +3,7 @@ package webhookrelayforward
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -112,7 +113,7 @@ type ReconcileWebhookRelayForward struct {
 func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	logger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
-	logger.Info("reconciling")
+	// logger.Info("reconciling")
 
 	reconcilePeriod := reconcilePeriodSeconds * time.Second
 	reconcileResult := reconcile.Result{RequeueAfter: reconcilePeriod}
@@ -159,7 +160,12 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 			instance,
 		)
 		if updateErr != nil {
-			logger.Error(updateErr, "Failed to update CR status")
+
+			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
+				logger.Error(updateErr, "Failed to update CR routing configuration status",
+					"status", forwardv1.AgentStatusCreating,
+				)
+			}
 		}
 		if requeue {
 			logger.Info("routing status updated, requeuing")
@@ -243,14 +249,22 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 
 			_, updateErr := r.updateDeploymentStatus(logger, forwardv1.AgentStatusCreating, false, instance)
 			if updateErr != nil {
-				logger.Error(updateErr, "Failed to update CR status")
+				if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
+					logger.Error(updateErr, "Failed to update CR status",
+						"status", forwardv1.AgentStatusCreating,
+					)
+				}
 			}
 			return err
 		}
 
 		_, updateErr := r.updateDeploymentStatus(logger, forwardv1.AgentStatusRunning, true, instance)
 		if updateErr != nil {
-			logger.Error(updateErr, "Failed to update CR status")
+			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
+				logger.Error(updateErr, "Failed to update CR status",
+					"status", forwardv1.AgentStatusRunning,
+				)
+			}
 		}
 
 		// Deployment created successfully - don't requeue
@@ -265,7 +279,11 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 		// TODO: check replicas 1/1 for Ready status
 		_, updateErr := r.updateDeploymentStatus(logger, forwardv1.AgentStatusRunning, true, instance)
 		if updateErr != nil {
-			logger.Error(updateErr, "Failed to update CR status")
+			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
+				logger.Error(updateErr, "Failed to update CR status",
+					"status", forwardv1.AgentStatusRunning,
+				)
+			}
 		}
 
 		// Deployment already exists - don't requeue
