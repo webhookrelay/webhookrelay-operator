@@ -206,15 +206,15 @@ func (r *ReconcileWebhookRelayForward) updateRoutingStatus(logger logr.Logger, s
 	return true, err
 }
 
-func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(logger logr.Logger, phase forwardv1.ForwarderPhase, ready bool, instance *forwardv1.WebhookRelayForward) (bool, error) {
-	if instance.Status.Phase == phase && instance.Status.Ready == ready {
+func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(logger logr.Logger, status forwardv1.AgentStatus, ready bool, instance *forwardv1.WebhookRelayForward) (bool, error) {
+	if instance.Status.AgentStatus == status && instance.Status.Ready == ready {
 		return false, nil
 	}
-	instance.Status.Phase = phase
+	instance.Status.AgentStatus = status
 	instance.Status.Ready = ready
 
 	logger.Info("Updating deployment status",
-		"phase", phase,
+		"status", status,
 		"ready", ready,
 	)
 
@@ -241,14 +241,14 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 		if err != nil {
 			r.recorder.Event(instance, corev1.EventTypeWarning, "FailedCreation", err.Error())
 
-			_, updateErr := r.updateDeploymentStatus(logger, forwardv1.ForwarderPhaseCreating, false, instance)
+			_, updateErr := r.updateDeploymentStatus(logger, forwardv1.AgentStatusCreating, false, instance)
 			if updateErr != nil {
 				logger.Error(updateErr, "Failed to update CR status")
 			}
 			return err
 		}
 
-		_, updateErr := r.updateDeploymentStatus(logger, forwardv1.ForwarderPhaseRunning, true, instance)
+		_, updateErr := r.updateDeploymentStatus(logger, forwardv1.AgentStatusRunning, true, instance)
 		if updateErr != nil {
 			logger.Error(updateErr, "Failed to update CR status")
 		}
@@ -263,7 +263,7 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 	patched, equals := r.checkDeployment(instance, found)
 	if equals {
 		// TODO: check replicas 1/1 for Ready status
-		_, updateErr := r.updateDeploymentStatus(logger, forwardv1.ForwarderPhaseRunning, true, instance)
+		_, updateErr := r.updateDeploymentStatus(logger, forwardv1.AgentStatusRunning, true, instance)
 		if updateErr != nil {
 			logger.Error(updateErr, "Failed to update CR status")
 		}

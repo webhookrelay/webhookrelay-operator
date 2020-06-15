@@ -39,6 +39,12 @@ test:
 local-run:
 	OPERATOR_NAME=webhookrelay-operator $(OPERATOR_SDK) run local --operator-flags="--zap-devel"
 
+clean-crd:
+	kubectl delete -f deploy/crds/forward.webhookrelay.com_webhookrelayforwards_crd.yaml
+
+add-cr:
+	kubectl apply -f deploy/crds
+
 image-operator:
 	docker build . -f build/Dockerfile -t $(OPERATOR_IMAGE)
 
