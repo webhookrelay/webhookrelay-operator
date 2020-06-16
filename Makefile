@@ -1,6 +1,7 @@
 JOBDATE		?= $(shell date -u +%Y-%m-%dT%H%M%SZ)
 GIT_REVISION	= $(shell git rev-parse --short HEAD)
 VERSION		?= $(shell git describe --tags --abbrev=0)
+OPERATOR_PREVIOUS_VERSION	?= $(shell git describe --abbrev=0 --tags $(VERSION)^)
 OPERATOR_IMAGE ?= webhookrelay/webhookrelay-operator:test
 
 GO_ENV = GOOS=linux CGO_ENABLED=0
@@ -47,6 +48,25 @@ add-cr:
 
 image-operator:
 	docker build . -f build/Dockerfile -t $(OPERATOR_IMAGE)
+
+##############################
+#           OLM              #
+##############################
+
+olm-install:
+	$(OPERATOR_SDK) olm install
+
+gen-csv:
+	$(OPERATOR_SDK) operator-sdk olm-catalog gen-csv --csv-version $(VERSION) --from-version $(OPERATOR_PREVIOUS_VERSION)
+
+gen-bundle:
+	$(OPERATOR_SDK) bundle create --generate-only
+
+validate-bundle:
+	$(OPERATOR_SDK) bundle validate deploy/olm-catalog/webhookrelay-operator/
+
+test-package-manifests:
+	$(OPERATOR_SDK) run packagemanifests --operator-version $(VERSION)
 
 ##############################
 #     Third-party tools      #

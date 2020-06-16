@@ -1,0 +1,202 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: |-
+      [
+        {
+          "apiVersion": "forward.webhookrelay.com/v1",
+          "kind": "WebhookRelayForward",
+          "metadata": {
+            "name": "example-forward"
+          },
+          "spec": {
+            "buckets": [
+              {
+                "inputs": [
+                  {
+                    "description": "Public endpoint, supply this to the webhook producer",
+                    "name": "public-endpoint",
+                    "responseBody": "OK",
+                    "responseStatusCode": 200
+                  }
+                ],
+                "name": "k8s-operator",
+                "outputs": [
+                  {
+                    "destination": "http://destination:5050/webhooks",
+                    "name": "webhook-receiver"
+                  }
+                ]
+              }
+            ],
+            "secretRefName": "whr-credentials",
+            "secretRefNamespace": ""
+          }
+        }
+      ]
+    capabilities: Basic Install
+  name: webhookrelay-operator.v0.1.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: WebhookRelayForward is the Schema for the webhookrelayforwards
+        API
+      kind: WebhookRelayForward
+      name: webhookrelayforwards.forward.webhookrelay.com
+      version: v1
+  description: Receive, transform webhooks and expose web services to the internet
+    without having public IP or configuring NAT/firewall in a secure way.
+  displayName: Webhook Relay Operator
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments:
+      - name: webhookrelay-operator
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              name: webhookrelay-operator
+          strategy: {}
+          template:
+            metadata:
+              labels:
+                name: webhookrelay-operator
+            spec:
+              containers:
+              - command:
+                - webhookrelay-operator
+                env:
+                - name: WATCH_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.annotations['olm.targetNamespaces']
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                - name: OPERATOR_NAME
+                  value: webhookrelay-operator
+                image: webhookrelay/webhookrelay-operator:latest
+                imagePullPolicy: Always
+                name: webhookrelay-operator
+                resources:
+                  limits:
+                    cpu: 100m
+                    memory: 256Mi
+                  requests:
+                    cpu: 50m
+                    memory: 128Mi
+              serviceAccountName: webhookrelay-operator
+      permissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          - services
+          - services/finalizers
+          - endpoints
+          - persistentvolumeclaims
+          - events
+          - configmaps
+          - secrets
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - apps
+          resources:
+          - deployments
+          - daemonsets
+          - replicasets
+          - statefulsets
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - servicemonitors
+          verbs:
+          - get
+          - create
+        - apiGroups:
+          - apps
+          resourceNames:
+          - webhookrelay-operator
+          resources:
+          - deployments/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          verbs:
+          - get
+        - apiGroups:
+          - apps
+          resources:
+          - replicasets
+          - deployments
+          verbs:
+          - get
+        - apiGroups:
+          - forward.webhookrelay.com
+          resources:
+          - '*'
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        serviceAccountName: webhookrelay-operator
+    strategy: deployment
+  installModes:
+  - supported: true
+    type: OwnNamespace
+  - supported: true
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - webhookrelay
+  - webhooks
+  - operator
+  - networking
+  - tunnelling
+  - cicd
+  - ci
+  - cd
+  links:
+  - name: Webhookrelay Operator
+    url: https://webhookrelay-operator.domain
+  maintainers:
+  - email: info@webhookrelay.com
+    name: support
+  maturity: alpha
+  provider:
+    name: Webhook Relay
+    url: https://webhookrelay.com/
+  version: 0.1.0

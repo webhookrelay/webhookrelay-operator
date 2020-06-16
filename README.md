@@ -6,7 +6,9 @@ Webhook Relay Operator provides an easy way to receive webhooks to an internal K
 - On-premise deployments 
 - Cloud deployments where public load balancer is not required (single endpoint receiving webhooks and no need to expose the whole server)
 - Edge deployments
-- IoT with https://k3s.io/
+- IoT & Edge computing with https://k3s.io/
+
+Operator can manage buckets, configure your public endpoints that accept webhooks/API requests and sets up forwarding destinations (where HTTP requests will be sent).
 
 ## Features
 
@@ -18,4 +20,5 @@ Current operator project scope:
 - [x] Ensure buckets are created 
 - [x] Ensure inputs are configured (public endpoints)
 - [x] Ensure outputs are configured (forwarding destinations)
-- [ ] K8s events on taken actions
+- [x] K8s events on taken actions
+- [x] Updates CR status 
