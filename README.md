@@ -22,3 +22,31 @@ Current operator project scope:
 - [x] Ensure outputs are configured (forwarding destinations)
 - [x] K8s events on taken actions
 - [x] Updates CR status 
+
+## Installation
+
+Prerequisites:
+
+* [Helm](https://docs.helm.sh/using_helm/#installing-helm)
+* [Webhook Relay account](https://my.webhookrelay.com)
+* Kubernetes
+
+You need to add this Chart repo to Helm:
+
+```bash
+helm repo add webhookrelay https://charts.webhookrelay.com 
+helm repo update
+```
+
+Get access token from [here](https://my.webhookrelay.com/tokens). Will show a helper to set environment variables:
+
+```
+export RELAY_KEY=*****-****-****-****-*********
+export RELAY_SECRET=**********
+```
+
+Install through Helm (with Helm provider enabled by default):
+
+```bash
+helm upgrade --install webhookrelay-operator --namespace=default webhookrelay/webhookrelay-operator --set credentials.key=$RELAY_KEY --set credentials.secret=$RELAY_SECRET
+```
