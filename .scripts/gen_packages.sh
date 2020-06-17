@@ -11,7 +11,7 @@ helm init -c
 
 echo "Packaging charts from source code"
 mkdir -p temp
-for d in chart/*
+for d in charts/*
 do
  # shellcheck disable=SC2039
  if [[ -d $d ]]
