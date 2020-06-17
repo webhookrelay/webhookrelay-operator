@@ -32,17 +32,23 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - name: http # metrics
+            - name: metrics
               containerPort: 8383
+              protocol: TCP
+            - name: opmetrics 
+              containerPort: 8686
+              protocol: TCP
+            - name: health
+              containerPort: 8986
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /
-              port: http
+              path: /healthz
+              port: health
           readinessProbe:
             httpGet:
-              path: /
-              port: http
+              path: /healthz
+              port: health
           env:
             - name: WATCH_NAMESPACE
               valueFrom:
