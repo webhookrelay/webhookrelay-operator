@@ -1,0 +1,206 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: webhookrelayforwards.forward.webhookrelay.com
+spec:
+  group: forward.webhookrelay.com
+  names:
+    kind: WebhookRelayForward
+    listKind: WebhookRelayForwardList
+    plural: webhookrelayforwards
+    singular: webhookrelayforward
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: WebhookRelayForward is the Schema for the webhookrelayforwards
+          API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: WebhookRelayForwardSpec defines the desired state of WebhookRelayForward
+            properties:
+              buckets:
+                description: Buckets to manage and subscribe to. Each CR can control
+                  one or more buckets. Buckets can be inspected and manually created
+                  via Web UI here https://my.webhookrelay.com/buckets
+                items:
+                  description: BucketSpec defines a bucket that groups one or more
+                    inputs (public endpoints) and one ore more outputs (where the
+                    webhooks should be routed)
+                  properties:
+                    description:
+                      type: string
+                    inputs:
+                      description: Inputs are your public endpoints. Inputs can either
+                        be https://my.webhookrelay.com/v1/webhooks/[unique ID] format
+                        or custom subdomains under https://[subdomain].hooks.webhookrelay.com
+                        or completely custom domains such as https://hooks.example.com.
+                        Important! Note that if you specify inputs, operator will
+                        automatically synchronize inputs of the specified bucket with
+                        the provided CR spec.
+                      items:
+                        description: InputSpec defines an input that belong to a bucket
+                        properties:
+                          customDomain:
+                            description: CustomDomain can be used to assign a permanent
+                              domain name for your input such as example.hooks.webhookrelay.com
+                            type: string
+                          description:
+                            description: Description can be any string
+                            type: string
+                          functionId:
+                            description: FunctionID attaches function to this input.
+                              Functions on inputs can modify responses to the caller
+                              and modify requests that are then passed to each output.
+                            type: string
+                          name:
+                            type: string
+                          pathPrefix:
+                            description: 'PathPrefix can be combined together with
+                              CustomDomain to create ''API like'' functionality where
+                              calls from: petshop.com/dogs -> are forwarded to [dogs
+                              store] petshop.com/cats -> are forwarded to [cats store]'
+                            type: string
+                          responseBody:
+                            type: string
+                          responseFromOutput:
+                            description: Dynamic response configuration either output
+                              name, ID or "anyOutput" to indicate that the first response
+                              from any output is good enough. Defaults to empty string
+                            type: string
+                          responseHeaders:
+                            additionalProperties:
+                              items:
+                                type: string
+                              type: array
+                            description: Static response configuration
+                            type: object
+                          responseStatusCode:
+                            type: integer
+                        type: object
+                      type: array
+                    name:
+                      description: Name is the name of a bucket that can be reused
+                        (if it already exists) or that will be created by the operator.
+                        Buckets act as a grouping mechanism for Inputs and Outputs
+                      type: string
+                    outputs:
+                      description: Outputs are destinations where webhooks/API requests
+                        should be forwarded.
+                      items:
+                        description: OutputSpec defines and output that belong to
+                          a bucket. Outputs are destinations where webhooks/API requests
+                          are forwarded.
+                        properties:
+                          description:
+                            description: Description can be any string
+                            type: string
+                          destination:
+                            description: Destination is a URL that specifies where
+                              to send the webhooks. For example it can be http://local-jenkins/ghpr
+                              for Jenkins webhooks or any other URL.
+                            type: string
+                          function_id:
+                            description: FunctionID attaches function to this output.
+                              Functions on output can modify requests that are then
+                              passed to destinations.
+                            type: string
+                          internal:
+                            description: Internal specifies whether webhook should
+                              be sent to an internal destination. Since operator is
+                              working with internal agents, this option defaults to
+                              True
+                            type: boolean
+                          name:
+                            type: string
+                          overrideHeaders:
+                            additionalProperties:
+                              type: string
+                            description: OverrideHeaders
+                            type: object
+                          timeout:
+                            description: Timeout specifies how long agent should wait
+                              for the response
+                            type: integer
+                        required:
+                        - destination
+                        type: object
+                      type: array
+                  type: object
+                type: array
+              image:
+                description: Image is webhookrelayd container, defaults to webhookrelay/webhookrelayd:latest
+                type: string
+              resources:
+                description: Resources is to set the resource requirements of the
+                  Webhook Relay agent container`.
+                properties:
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: 'Limits describes the maximum amount of compute resources
+                      allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                    type: object
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: 'Requests describes the minimum amount of compute
+                      resources required. If Requests is omitted for a container,
+                      it defaults to Limits if that is explicitly specified, otherwise
+                      to an implementation-defined value. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                    type: object
+                type: object
+              secretRefName:
+                description: 'SecretRefName is the name of the secret object that
+                  contains generated token from https://my.webhookrelay.com/tokens
+                  secret should have two fields: key    - your token key (a long UUID)
+                  secret - token secret, encrypted once generated and cannot be recovered
+                  from Webhook Relay. If secret is lost, just create a new token'
+                type: string
+              secretRefNamespace:
+                description: SecretRefNamespace is the namespace of the secret reference.
+                type: string
+            required:
+            - buckets
+            type: object
+          status:
+            description: WebhookRelayForwardStatus defines the observed state of WebhookRelayForward
+            properties:
+              agentStatus:
+                description: AgentStatus indicates agent deployment status
+                type: string
+              message:
+                type: string
+              ready:
+                description: Ready indicates whether agent is deployed
+                type: boolean
+              routingStatus:
+                description: RoutingStatus is configuration status
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,32 @@
+{{- if .Values.rbac.pspEnabled }}
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: {{ template "webhookrelay-operator.fullname" . }}
+  labels:
+    name: {{ template "webhookrelay-operator.name" . }}-operator
+{{ include "webhookrelay-operator.labels" . | indent 4 }}
+{{- if .Values.rbac.pspAnnotations }}
+  annotations:
+{{ toYaml .Values.rbac.pspAnnotations | indent 4 }}
+{{- end }}
+spec:
+  privileged: false
+  hostIPC: false
+  hostNetwork: false
+  hostPID: false
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+  allowedCapabilities:
+    - '*'
+  fsGroup:
+    rule: RunAsAny
+  runAsUser:
+    rule: RunAsAny
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  volumes:
+    - '*'
+{{- end }}
