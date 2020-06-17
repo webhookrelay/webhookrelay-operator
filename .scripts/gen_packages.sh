@@ -6,7 +6,7 @@ apt update
 apt install curl -y
 
 echo "Installing helm"
-curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get | bash
+curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
 helm init -c
 
 echo "Packaging charts from source code"
