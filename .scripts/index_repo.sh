@@ -6,8 +6,7 @@ apt update
 apt install curl -y
 
 echo "Installing helm"
-curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get | bash
-helm init -c
+curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
 
 echo "Indexing repository"
 if [ -f index.yaml ]; then
