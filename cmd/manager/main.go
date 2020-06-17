@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"runtime"
 	"strings"
@@ -38,6 +39,7 @@ var (
 	metricsHost               = "0.0.0.0"
 	metricsPort         int32 = 8383
 	operatorMetricsPort int32 = 8686
+	operatorHealthPort  int32 = 8986
 )
 var log = logf.Log.WithName("cmd")
 
@@ -96,8 +98,9 @@ func main() {
 
 	// Set default manager options
 	options := manager.Options{
-		Namespace:          namespace,
-		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
+		Namespace:              namespace,
+		MetricsBindAddress:     fmt.Sprintf("%s:%d", metricsHost, metricsPort),
+		HealthProbeBindAddress: fmt.Sprintf("%s:%d", metricsHost, operatorHealthPort),
 	}
 
 	// Add support for MultiNamespace set in WATCH_NAMESPACE (e.g ns1,ns2)
@@ -115,6 +118,11 @@ func main() {
 		log.Error(err, "")
 		os.Exit(1)
 	}
+
+	mgr.AddHealthzCheck("up", func(req *http.Request) error {
+		// OK
+		return nil
+	})
 
 	log.Info("Registering Components.")
 
