@@ -65,10 +65,10 @@ func (r *ReconcileWebhookRelayForward) setClientForCluster(instance *forwardv1.W
 
 		relayKey = string(secretInstance.Data[forwardv1.AccessTokenKeyName])
 		relaySecret = string(secretInstance.Data[forwardv1.AccessTokenSecretName])
-	} else if r.config.Token.Key != "" && r.config.Token.Secret != "" {
+	} else if r.config.Relay.Key != "" && r.config.Relay.Secret != "" {
 		// using operator config
-		relayKey = r.config.Token.Key
-		relaySecret = r.config.Token.Secret
+		relayKey = r.config.Relay.Key
+		relaySecret = r.config.Relay.Secret
 	} else {
 		return ErrCredentialsNotProvided
 	}

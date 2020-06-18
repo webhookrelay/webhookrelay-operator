@@ -5,11 +5,11 @@ type (
 	Config struct {
 		Image string `default:"webhookrelay/webhookrelayd:latest"`
 
-		// Token allows setting up relay token key & secret on the operator itself
+		// Relay allows setting up relay token key & secret on the operator itself
 		// rather than using per CR key & secret
-		Token struct {
-			Key    string `envconfig:"WHR_TOKEN_KEY"`
-			Secret string `envconfig:"WHR_TOKEN_SECRET"`
+		Relay struct {
+			Key    string `envconfig:"RELAY_KEY"`
+			Secret string `envconfig:"RELAY_SECRET"`
 		}
 	}
 )
