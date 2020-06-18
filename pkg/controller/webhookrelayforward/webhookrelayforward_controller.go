@@ -192,6 +192,7 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 	if err := r.reconcile(logger, instance); err != nil {
 		logger.Info("Reconcile failed", "error", err)
 	}
+
 	return reconcileResult, nil
 }
 
@@ -227,6 +228,21 @@ func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(logger logr.Logger
 	logger.Info("Updating deployment status",
 		"status", status,
 		"ready", ready,
+	)
+
+	err := r.client.Status().Patch(context.TODO(), patch, client.MergeFrom(instance))
+	return true, err
+}
+
+func (r *ReconcileWebhookRelayForward) updatePublicEndpoints(logger logr.Logger, instance *forwardv1.WebhookRelayForward) (bool, error) {
+
+	patch, update := r.shouldUpdatePublicEndpoints(instance)
+	if !update {
+		return false, nil
+	}
+
+	logger.Info("Updating public endpoints list",
+		"endpoints", patch.Status.PublicEndpoints,
 	)
 
 	err := r.client.Status().Patch(context.TODO(), patch, client.MergeFrom(instance))
@@ -282,10 +298,22 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 	patched, equals := r.checkDeployment(instance, found)
 	if equals {
 		// TODO: check replicas 1/1 for Ready status
-		_, updateErr := r.updateDeploymentStatus(logger, forwardv1.AgentStatusRunning, true, instance)
+		updated, updateErr := r.updateDeploymentStatus(logger, forwardv1.AgentStatusRunning, true, instance)
 		if updateErr != nil {
 			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
 				logger.Error(updateErr, "Failed to update CR status",
+					"status", forwardv1.AgentStatusRunning,
+				)
+			}
+		}
+		if updated {
+			return nil
+		}
+
+		_, updateErr = r.updatePublicEndpoints(logger, instance)
+		if updateErr != nil {
+			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfill") {
+				logger.Error(updateErr, "Failed to update CR status public endpoint list",
 					"status", forwardv1.AgentStatusRunning,
 				)
 			}
