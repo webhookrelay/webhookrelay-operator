@@ -20,15 +20,18 @@ func (r *ReconcileWebhookRelayForward) ensureRoutingConfiguration(logger logr.Lo
 	// Configuring bucket inputs and outputs. Here, errors can happen mostly due to user error when
 	// invalid values are set, however we can still continue as most of the input/output updates should succeed
 	for idx := range instance.Spec.Buckets {
+		// first ensuring outputs, because we might need to specify output
+		// ID on the input if it has "ResponseFromOutput"
+		err = r.ensureBucketOutputs(logger, instance, &instance.Spec.Buckets[idx])
+		if err != nil {
+			logger.Error(err, "failed to configure bucket '%s' outputs", instance.Spec.Buckets[idx].Name)
+		}
+
 		err = r.ensureBucketInputs(logger, instance, &instance.Spec.Buckets[idx])
 		if err != nil {
 			logger.Error(err, "failed to configure bucket '%s' inputs", instance.Spec.Buckets[idx].Name)
 		}
 
-		err = r.ensureBucketOutputs(logger, instance, &instance.Spec.Buckets[idx])
-		if err != nil {
-			logger.Error(err, "failed to configure bucket '%s' outputs", instance.Spec.Buckets[idx].Name)
-		}
 	}
 
 	return nil
