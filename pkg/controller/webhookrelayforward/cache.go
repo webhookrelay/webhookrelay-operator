@@ -39,6 +39,33 @@ func (c *bucketsCache) Set(buckets []*webhookrelay.Bucket) {
 	c.mu.Unlock()
 }
 
+// AddOutput if bucket is found, it updates existing output or
+// appends it to the output list.
+func (c *bucketsCache) AddOutput(o *webhookrelay.Output) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for k, bucket := range c.items {
+		if bucket.ID == o.BucketID {
+			// checking outputs
+			var found bool
+			for idx, output := range bucket.Outputs {
+				if output.ID == o.ID {
+					found = true
+					// updating item in the list
+					bucket.Outputs[idx] = o
+				}
+			}
+
+			if !found {
+				bucket.Outputs = append(bucket.Outputs, o)
+			}
+			c.items[k] = bucket
+		}
+	}
+
+}
+
 // Add a bucket to the cache. Can be used after creation or bucket update
 func (c *bucketsCache) Add(b *webhookrelay.Bucket) {
 	c.mu.Lock()
