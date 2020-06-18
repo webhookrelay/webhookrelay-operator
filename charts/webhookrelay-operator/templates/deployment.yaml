@@ -60,6 +60,19 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: {{ include "webhookrelay-operator.fullname" . }}
+{{- if and .Values.credentials.key .Values.credentials.secret }}
+            # Set access token secret
+            - name: RELAY_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "webhookrelay-operator.fullname" . }}-secret
+                  key: key
+            - name: RELAY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "webhookrelay-operator.fullname" . }}-secret
+                  key: secret
+{{- end }}              
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
