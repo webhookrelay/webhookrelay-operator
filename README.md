@@ -16,12 +16,20 @@ Current operator project scope:
 
 - [x] Deploy webhook forwarding agents with configured buckets
 - [x] Read credentials from secrets and mount secrets to webhookrelayd containers
-- [ ] Provision separate access tokens for webhookrelayd containers with disabled API access (only subscribe capability)
 - [x] Ensure buckets are created 
 - [x] Ensure inputs are configured (public endpoints)
 - [x] Ensure outputs are configured (forwarding destinations)
 - [x] K8s events on taken actions
-- [x] Updates CR status 
+- [x] Updates CR status
+
+### Roadmap
+
+- [ ] Create & manage [Functions](https://webhookrelay.com/v1/guide/functions.html) that transform webhook requests and responses
+- [ ] Manage Function configuration through Kubernetes secrets
+- [ ] Provision separate access tokens for webhookrelayd containers with disabled API access (only subscribe capability). CR should have a finalizer that would ensure that the secret is removed together with the agent configuration.
+- [ ] Deploy Webhook Relay ingress controller (separate CRD)
+- [ ] Expose webhookrelayd agent forwarding metrics
+- [ ] Configure [notification integrations](https://webhookrelay.com/v1/guide/integrations.html) via CRDs
 
 ## Installation
 
@@ -34,7 +42,7 @@ Prerequisites:
 You need to add this Chart repo to Helm:
 
 ```bash
-helm repo add webhookrelay https://charts.webhookrelay.com 
+helm repo add webhookrelay https://charts.webhookrelay.com
 helm repo update
 ```
 
@@ -48,5 +56,126 @@ export RELAY_SECRET=**********
 Install through Helm (with Helm provider enabled by default):
 
 ```bash
-helm upgrade --install webhookrelay-operator --namespace=default webhookrelay/webhookrelay-operator --set credentials.key=$RELAY_KEY --set credentials.secret=$RELAY_SECRET
+helm upgrade --install webhookrelay-operator --namespace=default webhookrelay/webhookrelay-operator \
+  --set credentials.key=$RELAY_KEY --set credentials.secret=$RELAY_SECRET
+```
+
+## Usage
+
+Operator works as a manager to configure your public endpoints and forwarding destinations. To start receiving webhooks you will need to create a [Custom Resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) (usually called just 'CR'). It's a short yaml file that describes your public endpoint characteristics and specifies where to forward the webhooks:
+
+```yaml
+# cr.yaml
+apiVersion: forward.webhookrelay.com/v1
+kind: WebhookRelayForward
+metadata:
+  name: example-forward
+spec:
+  buckets:
+  - name: k8s-operator
+    inputs:
+    - name: public-endpoint
+      description: "Public endpoint, supply this to the webhook producer"
+      responseBody: "OK"
+      responseStatusCode: 200
+    outputs:
+    - name: webhook-receiver
+      destination: http://destination:5050/webhooks
+```
+
+```shell
+kubectl apply -f cr.yaml
+```
+
+Now, to view CR status which will display our public endpoints:
+
+```shell
+# get available CRs
+$ kubectl get webhookrelayforwards.forward.webhookrelay.com
+# get our example forward status
+$ kubectl describe webhookrelayforwards.forward.webhookrelay.com example-forward
+Name:         example-forward
+Namespace:    default
+Labels:       <none>
+Annotations:  API Version:  forward.webhookrelay.com/v1
+Kind:         WebhookRelayForward
+Metadata:
+  Creation Timestamp:  2020-06-18T23:05:33Z
+  Generation:          1
+  Resource Version:    118902
+  Self Link:           /apis/forward.webhookrelay.com/v1/namespaces/default/webhookrelayforwards/example-forward
+  UID:                 998b0fca-f975-40dd-b2b5-91abd1edaee0
+Spec:
+  Buckets:
+    Inputs:
+      Description:           Public endpoint, supply this to the webhook producer
+      Name:                  public-endpoint
+      Response Body:         OK
+      Response Status Code:  200
+    Name:                    k8s-operator
+    Outputs:
+      Destination:       http://destination:5050/webhooks
+      Name:              webhook-receiver
+  Secret Ref Name:       whr-credentials
+  Secret Ref Namespace:  
+Status:
+  Agent Status:  Running
+  Public Endpoints:
+    https://my.webhookrelay.com/v1/webhooks/92582560-738a-4eae-94b1-23299ed20b3c
+  Ready:           true
+  Routing Status:  Configured
+Events:            <none>
+```
+
+Here we can see our public endpoints.
+
+## Advanced Usage (multi-tenant, credentials per CR)
+
+If more than one user is using the operator, it's possible to skip credentials setting during Helm install and just specify the [access token key & secret](https://my.webhookrelay.com/tokens) in the CR itself:
+
+```yaml
+# access_token.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: whr-credentials
+type: Opaque
+stringData:
+  key: XXX    # your access token key
+  secret: YYY # your access token secret
+```
+
+Create it:
+
+```shell
+kubectl apply -f access_token.yaml
+```
+
+Specify the secret ref in the CR as `secretRefName` and `secretRefNamespace` (this one is optional):
+
+```yaml
+# cr.yaml
+apiVersion: forward.webhookrelay.com/v1
+kind: WebhookRelayForward
+metadata:
+  name: example-forward
+spec:
+  secretRefName: whr-credentials # Secret 
+  secretRefNamespace: ""
+  buckets:
+  - name: k8s-operator
+    inputs:
+    - name: public-endpoint
+      description: "Public endpoint, supply this to the webhook producer"
+      responseBody: "OK"
+      responseStatusCode: 200
+    outputs:
+    - name: webhook-receiver
+      destination: http://destination:5050/webhooks
+```
+
+Create the CR:
+
+```
+kubectl apply -f cr.yaml
 ```
