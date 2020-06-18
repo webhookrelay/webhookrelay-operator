@@ -32,18 +32,24 @@ func (r *ReconcileWebhookRelayForward) ensureBucketOutputs(logger logr.Logger, i
 	desired := desiredOutputs(bucketSpec, bucket)
 	diff := getOutputsDiff(bucket.Outputs, desired)
 
-	var err error
-
+	var (
+		err     error
+		created *webhookrelay.Output
+		updated *webhookrelay.Output
+	)
 	// Create inputs that need to be created
 	for idx := range diff.create {
 		logger.Info("creating output",
 			"output_id", diff.create[idx].ID,
 			"output_name", diff.create[idx].Name,
 		)
-		_, err = r.apiClient.client.CreateOutput(diff.create[idx])
+		created, err = r.apiClient.client.CreateOutput(diff.create[idx])
 		if err != nil {
 			logger.Error(err, "failed to create output")
+			continue
 		}
+		// updating cache
+		r.apiClient.bucketsCache.AddOutput(created)
 	}
 
 	for idx := range diff.update {
@@ -51,12 +57,14 @@ func (r *ReconcileWebhookRelayForward) ensureBucketOutputs(logger logr.Logger, i
 			"output_id", diff.update[idx].ID,
 			"output_name", diff.update[idx].Name,
 		)
-		_, err = r.apiClient.client.UpdateOutput(diff.update[idx])
+		updated, err = r.apiClient.client.UpdateOutput(diff.update[idx])
 		if err != nil {
 			logger.Error(err, "failed to update input",
 				"input_id", diff.update[idx].ID,
 			)
+			continue
 		}
+		r.apiClient.bucketsCache.AddOutput(updated)
 	}
 
 	for idx := range diff.delete {
