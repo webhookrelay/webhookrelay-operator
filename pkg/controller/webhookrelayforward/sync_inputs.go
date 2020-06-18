@@ -31,6 +31,7 @@ func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, in
 	// ones against them to build a list of what inputs
 	// we should create, update and which ones to delete
 	desired := desiredInputs(bucketSpec, bucket)
+
 	diff := getInputsDiff(bucket.Inputs, desired)
 
 	var err error
@@ -91,6 +92,21 @@ func desiredInputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucket
 }
 
 func inputSpecToInput(spec *forwardv1.InputSpec, bucket *webhookrelay.Bucket) *webhookrelay.Input {
+
+	// Ensuring that ResponseFromOutput is either empty, 'anyOutput' or an actual ID
+	// of the output that is inside this bucket
+	if spec.ResponseFromOutput != "" && spec.ResponseFromOutput != "anyOutput" {
+		// checking maybe it's specified by name
+		for idx := range bucket.Outputs {
+			output := bucket.Outputs[idx]
+			if output.Name == spec.ResponseFromOutput || output.ID == spec.ResponseFromOutput {
+				// found it
+				spec.ResponseFromOutput = output.ID
+				break
+			}
+		}
+	}
+
 	return &webhookrelay.Input{
 		Name:       spec.Name,
 		BucketID:   bucket.ID,
