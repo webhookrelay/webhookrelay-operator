@@ -192,6 +192,12 @@ spec:
                 type: string
               message:
                 type: string
+              publicEndpoints:
+                description: PublicEndpoints are all input public endpoints from the
+                  buckets defined in the spec
+                items:
+                  type: string
+                type: array
               ready:
                 description: Ready indicates whether agent is deployed
                 type: boolean
