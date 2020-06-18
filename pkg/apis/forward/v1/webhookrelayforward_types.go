@@ -143,6 +143,9 @@ type WebhookRelayForwardStatus struct {
 
 	RoutingStatus RoutingStatus `json:"routingStatus,omitempty"`
 	Message       string        `json:"message,omitempty"`
+	// PublicEndpoints are all input public endpoints from the buckets
+	// defined in the spec
+	PublicEndpoints []string `json:"publicEndpoints,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
