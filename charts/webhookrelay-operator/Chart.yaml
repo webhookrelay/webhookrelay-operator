@@ -2,6 +2,20 @@ apiVersion: v2
 name: webhookrelay-operator
 description: Webhook Relay Operator to deploy agents and manage routing configurations
 
+icon: https://webhookrelay.com/images/logo.png
+keywords:
+- webhooks
+- tunnel
+- cicd
+- github
+- jenkins
+home: https://github.com/webhookrelay/webhookrelay-operator
+maintainers:
+- name: Karolis Rusenas
+  email: karolis@webhookrelay.com
+  url: https://webhookrelay.com
+
+
 # A chart can be either an 'application' or a 'library' chart.
 #
 # Application charts are a collection of templates that can be packaged into versioned archives
@@ -15,7 +29,7 @@ type: application
 # This is the chart version. This version number should be incremented each time you make changes
 # to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: 0.1.1
+version: 0.1.2
 
 # This is the version number of the application being deployed. This version number should be
 # incremented each time you make changes to the application. Versions are not expected to
