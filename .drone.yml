@@ -23,6 +23,13 @@ steps:
   commands:
   - make build
 
+- name: lint-code
+  pull: default
+  image: golang
+  commands:
+  - make golangci-lint
+  - make lint
+
 - name: lint-charts
   pull: default
   image: quay.io/helmpack/chart-testing:v3.0.0-rc.1

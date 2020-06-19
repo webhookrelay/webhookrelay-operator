@@ -26,6 +26,10 @@ build:
 		-o ./build/_output/bin/webhookrelay-operator \
 		./cmd/manager
 
+##############################
+#           DEV              #
+##############################
+
 # Generate APIs, CRD specs and CRD clientset.
 go-gen:
 	$(OPERATOR_SDK) generate k8s
@@ -48,6 +52,9 @@ add-cr:
 
 image-operator:
 	docker build . -f build/Dockerfile -t $(OPERATOR_IMAGE)
+
+lint:
+	$(GOLANGCI_LINT) run
 
 ##############################
 #           OLM              #

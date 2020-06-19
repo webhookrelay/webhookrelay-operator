@@ -9,8 +9,7 @@ import (
 	forwardv1 "github.com/webhookrelay/webhookrelay-operator/pkg/apis/forward/v1"
 )
 
-func (r *ReconcileWebhookRelayForward) ensureBucketOutputs(logger logr.Logger, instance *forwardv1.WebhookRelayForward, bucketSpec *forwardv1.BucketSpec) error {
-
+func (r *ReconcileWebhookRelayForward) ensureBucketOutputs(logger logr.Logger, bucketSpec *forwardv1.BucketSpec) error {
 	// If no outputs are defined, nothing to do
 	if len(bucketSpec.Outputs) == 0 {
 		return nil
@@ -93,7 +92,6 @@ type outputsDiff struct {
 }
 
 func getOutputsDiff(current, desired []*webhookrelay.Output) *outputsDiff {
-
 	diff := &outputsDiff{}
 
 	currentMap := make(map[string]*webhookrelay.Output)
@@ -134,7 +132,6 @@ func getOutputsDiff(current, desired []*webhookrelay.Output) *outputsDiff {
 }
 
 func desiredOutputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucket) []*webhookrelay.Output {
-
 	var desired []*webhookrelay.Output
 
 	for i := range bucketSpec.Outputs {
@@ -173,7 +170,6 @@ func inputSpecToOutput(spec *forwardv1.OutputSpec, bucket *webhookrelay.Bucket) 
 }
 
 func outputsEqual(current, desired *webhookrelay.Output) bool {
-
 	if current.Name != desired.Name {
 		return false
 	}

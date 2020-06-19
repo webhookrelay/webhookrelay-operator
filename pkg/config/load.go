@@ -9,7 +9,7 @@ func Load() (Config, error) {
 	return config, err
 }
 
-// MustLoad loads the configuration from the environmnet
+// MustLoad loads the configuration from the environment
 // and panics if an error is encountered.
 func MustLoad() Config {
 	config, err := Load()

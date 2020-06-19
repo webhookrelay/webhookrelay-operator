@@ -24,7 +24,6 @@ func (r *ReconcileWebhookRelayForward) ensureBucketConfiguration(logger logr.Log
 	r.apiClient.bucketsCache.Set(buckets)
 
 	for i := range instance.Spec.Buckets {
-
 		if instance.Spec.Buckets[i].Description == "" {
 			instance.Spec.Buckets[i].Description = getBucketDescription(instance)
 		}
@@ -64,7 +63,6 @@ func (r *ReconcileWebhookRelayForward) ensureBucketConfiguration(logger logr.Log
 				"bucket_ref", instance.Spec.Buckets[i].Name,
 			)
 		}
-
 	}
 
 	if len(errors) > 0 {
@@ -87,6 +85,7 @@ func getBucketByName(name string, buckets []*webhookrelay.Bucket) (*webhookrelay
 	return nil, false
 }
 
+//nolint
 func bucketEqual(spec *forwardv1.BucketSpec, bucket *webhookrelay.Bucket) bool {
 
 	if spec.Description != bucket.Description {

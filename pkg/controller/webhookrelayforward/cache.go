@@ -63,7 +63,6 @@ func (c *bucketsCache) AddOutput(o *webhookrelay.Output) {
 			c.items[k] = bucket
 		}
 	}
-
 }
 
 // Add a bucket to the cache. Can be used after creation or bucket update
@@ -120,7 +119,7 @@ func (c *bucketsCache) List() []*webhookrelay.Bucket {
 		cp := new(webhookrelay.Bucket)
 		err = copier.Copy(v, cp)
 		if err != nil {
-			//
+			continue
 		}
 		items = append(items, cp)
 	}
