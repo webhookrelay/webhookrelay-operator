@@ -23,6 +23,14 @@ steps:
   commands:
   - make build
 
+- name: lint-charts
+  pull: default
+  image: quay.io/helmpack/chart-testing:v3.0.0-rc.1
+  commands:
+  - git remote add k8s https://github.com/webhookrelay/webhookrelay-operator
+  - git fetch k8s master
+  - ct lint --config .scripts/ct.yaml
+
 - name: publish
   pull: default
   image: plugins/docker
