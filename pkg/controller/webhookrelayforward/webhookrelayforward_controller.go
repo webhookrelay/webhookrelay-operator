@@ -113,8 +113,6 @@ type ReconcileWebhookRelayForward struct {
 func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	logger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
-	// logger.Info("reconciling")
-
 	reconcilePeriod := reconcilePeriodSeconds * time.Second
 	reconcileResult := reconcile.Result{RequeueAfter: reconcilePeriod}
 	reconcileImmediately := reconcile.Result{RequeueAfter: time.Second}
@@ -160,7 +158,6 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 			instance,
 		)
 		if updateErr != nil {
-
 			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
 				logger.Error(updateErr, "Failed to update CR routing configuration status",
 					"status", forwardv1.AgentStatusCreating,
@@ -171,7 +168,6 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 			logger.Info("routing status updated, requeuing")
 			return reconcileImmediately, updateErr
 		}
-
 	} else {
 		// Setting status to Configured
 		requeue, updateErr := r.updateRoutingStatus(
@@ -196,7 +192,12 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 	return reconcileResult, nil
 }
 
-func (r *ReconcileWebhookRelayForward) updateRoutingStatus(logger logr.Logger, status forwardv1.RoutingStatus, message string, instance *forwardv1.WebhookRelayForward) (bool, error) {
+func (r *ReconcileWebhookRelayForward) updateRoutingStatus(
+	logger logr.Logger,
+	status forwardv1.RoutingStatus,
+	message string,
+	instance *forwardv1.WebhookRelayForward) (bool, error) {
+	// check whether status has changed
 	if instance.Status.RoutingStatus == status && instance.Status.Message == message {
 		return false, nil
 	}

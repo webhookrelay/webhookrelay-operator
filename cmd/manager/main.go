@@ -119,10 +119,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	mgr.AddHealthzCheck("up", func(req *http.Request) error {
+	if err := mgr.AddHealthzCheck("up", func(req *http.Request) error {
 		// OK
 		return nil
-	})
+	}); err != nil {
+		log.Error(err, "")
+		os.Exit(1)
+		return
+	}
 
 	log.Info("Registering Components.")
 
@@ -162,7 +166,8 @@ func addMetrics(ctx context.Context, cfg *rest.Config) {
 		}
 	}
 
-	if err := serveCRMetrics(cfg, operatorNs); err != nil {
+	err = serveCRMetrics(cfg, operatorNs)
+	if err != nil {
 		log.Info("Could not generate and serve custom resource metrics", "error", err.Error())
 	}
 

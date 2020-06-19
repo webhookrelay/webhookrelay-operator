@@ -10,8 +10,7 @@ import (
 )
 
 // ensureBucketInputs checks and configures input specific information
-func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, instance *forwardv1.WebhookRelayForward, bucketSpec *forwardv1.BucketSpec) error {
-
+func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, bucketSpec *forwardv1.BucketSpec) error {
 	// If no inputs are defined, nothing to do
 	if len(bucketSpec.Inputs) == 0 {
 		return nil
@@ -81,7 +80,6 @@ func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, in
 }
 
 func desiredInputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucket) []*webhookrelay.Input {
-
 	var desired []*webhookrelay.Input
 
 	for i := range bucketSpec.Inputs {
@@ -92,7 +90,6 @@ func desiredInputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucket
 }
 
 func inputSpecToInput(spec *forwardv1.InputSpec, bucket *webhookrelay.Bucket) *webhookrelay.Input {
-
 	// Ensuring that ResponseFromOutput is either empty, 'anyOutput' or an actual ID
 	// of the output that is inside this bucket
 	if spec.ResponseFromOutput != "" && spec.ResponseFromOutput != "anyOutput" {
@@ -123,7 +120,6 @@ func inputSpecToInput(spec *forwardv1.InputSpec, bucket *webhookrelay.Bucket) *w
 }
 
 func getInputsDiff(current, desired []*webhookrelay.Input) *inputsDiff {
-
 	diff := &inputsDiff{}
 
 	currentMap := make(map[string]*webhookrelay.Input)

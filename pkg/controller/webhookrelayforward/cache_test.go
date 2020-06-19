@@ -28,8 +28,6 @@ func TestCache_AddOutput(t *testing.T) {
 	})
 
 	t.Run("TestUpdateBucket", func(t *testing.T) {
-		// c.Add(&webhookrelay.Bucket{ID: "foo", Name: "b-1"})
-
 		c.AddOutput(&webhookrelay.Output{ID: "foo", BucketID: "foo", Name: "o-1"})
 
 		name := c.items["b-1"].Outputs[0].Name
@@ -37,5 +35,4 @@ func TestCache_AddOutput(t *testing.T) {
 		assert.Equal(t, 1, len(c.items["b-1"].Outputs))
 		assert.Equal(t, "o-1", name)
 	})
-
 }

@@ -82,28 +82,6 @@ func envVarSourceEqual(current, desired *corev1.EnvVarSource) bool {
 		return false
 	}
 
-	// var (
-	// 	desiredSecretRefName string
-	// 	desiredSecretRefKey  string
-	// )
-
-	// if desired.SecretKeyRef != nil {
-	// 	desiredSecretRefName = desired.SecretKeyRef.Name
-	// 	desiredSecretRefKey = desired.SecretKeyRef.Key
-	// }
-
-	// if current.SecretKeyRef == nil {
-	// 	return false
-	// }
-
-	// if current.SecretKeyRef.Name != desiredSecretRefName {
-	// 	return false
-	// }
-
-	// if current.SecretKeyRef.Key != desiredSecretRefKey {
-	// 	return false
-	// }
-
 	return true
 }
 

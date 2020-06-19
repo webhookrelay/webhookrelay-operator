@@ -7,7 +7,6 @@ import (
 )
 
 func (r *ReconcileWebhookRelayForward) shouldUpdatePublicEndpoints(instance *forwardv1.WebhookRelayForward) (*forwardv1.WebhookRelayForward, bool) {
-
 	if len(instance.Spec.Buckets) == 0 && len(instance.Status.PublicEndpoints) == 0 {
 		// nothing to do
 		return nil, false
@@ -26,7 +25,6 @@ func (r *ReconcileWebhookRelayForward) shouldUpdatePublicEndpoints(instance *for
 	sort.Strings(instance.Status.PublicEndpoints)
 
 	if !sliceEquals(desiredEndpoints, instance.Status.PublicEndpoints) {
-
 		patch := instance.DeepCopy()
 		patch.Status.PublicEndpoints = desiredEndpoints
 		return patch, true
@@ -36,7 +34,6 @@ func (r *ReconcileWebhookRelayForward) shouldUpdatePublicEndpoints(instance *for
 }
 
 func computePublicEndpoints(instance *forwardv1.WebhookRelayForward, bucketsCache *bucketsCache) []string {
-
 	var (
 		endpoints []string
 		endpoint  string

@@ -14,7 +14,7 @@ import (
 
 // Errors
 var (
-	ErrCredentialsNotProvided = errors.New("Webhook Relay access token key and secret not provided")
+	ErrCredentialsNotProvided = errors.New("access token key and secret not provided")
 )
 
 // WebhookRelayClient is a wrapper for the Webhook Relay API client
@@ -37,7 +37,6 @@ type WebhookRelayClient struct {
 }
 
 func (r *ReconcileWebhookRelayForward) setClientForCluster(instance *forwardv1.WebhookRelayForward) error {
-
 	// credentials to use
 	var (
 		relayKey    string
@@ -45,7 +44,6 @@ func (r *ReconcileWebhookRelayForward) setClientForCluster(instance *forwardv1.W
 	)
 
 	if instance.Spec.SecretRefName != "" {
-
 		namespace := instance.Spec.SecretRefNamespace
 		if namespace == "" {
 			// defaulting to CR namespace
