@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://webhookrelay.com" target="_blank"><img width="100"src="https://github.com/webhookrelay/webhookrelay-operator/blob/master/static/operator.png?raw=true"></a>
+  <a href="https://webhookrelay.com" target="_blank"><img width="900"src="https://github.com/webhookrelay/webhookrelay-operator/blob/master/static/operator.png?raw=true"></a>
 </p>
 
 # Webhook Relay Kubernetes Operator
