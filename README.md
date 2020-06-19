@@ -46,14 +46,14 @@ helm repo add webhookrelay https://charts.webhookrelay.com
 helm repo update
 ```
 
-Get access token from [here](https://my.webhookrelay.com/tokens). Will show a helper to set environment variables:
+Get access token from [here](https://my.webhookrelay.com/tokens). Once you click on 'Create Token', it will generate it and show a helper to set environment variables:
 
 ```
 export RELAY_KEY=*****-****-****-****-*********
 export RELAY_SECRET=**********
 ```
 
-Install through Helm (with Helm provider enabled by default):
+Install through Helm:
 
 ```bash
 helm upgrade --install webhookrelay-operator --namespace=default webhookrelay/webhookrelay-operator \
