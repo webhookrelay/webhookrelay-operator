@@ -1,7 +1,3 @@
-<p align="center">
-  <a href="https://webhookrelay.com" target="_blank"><img width="100"src="https://github.com/webhookrelay/webhookrelay-operator/blob/master/static/operator.png?raw=true"></a>
-</p>
-
 # Webhook Relay Kubernetes Operator
 
 [![Build Status](https://drone-kr.webrelay.io/api/badges/webhookrelay/webhookrelay-operator/status.svg)](https://drone-kr.webrelay.io/webhookrelay/webhookrelay-operator)
@@ -18,22 +14,14 @@ Operator can manage buckets, configure your public endpoints that accept webhook
 
 Current operator project scope:
 
-- [x] Deploy webhook forwarding agents with configured buckets
-- [x] Read credentials from secrets and mount secrets to webhookrelayd containers
-- [x] Ensure buckets are created 
-- [x] Ensure inputs are configured (public endpoints)
-- [x] Ensure outputs are configured (forwarding destinations)
-- [x] K8s events on taken actions
-- [x] Updates CR status
+- Deploy webhook forwarding agents with configured buckets
+- Read credentials from secrets and mount secrets to webhookrelayd containers
+- Ensure buckets are created 
+- Ensure inputs are configured (public endpoints)
+- Ensure outputs are configured (forwarding destinations)
+- K8s events on taken actions
+- Updates CR status
 
-### Roadmap
-
-- [ ] Create & manage [Functions](https://webhookrelay.com/v1/guide/functions.html) that transform webhook requests and responses
-- [ ] Manage Function configuration through Kubernetes secrets
-- [ ] Provision separate access tokens for webhookrelayd containers with disabled API access (only subscribe capability). CR should have a finalizer that would ensure that the secret is removed together with the agent configuration.
-- [ ] Deploy Webhook Relay ingress controller (separate CRD)
-- [ ] Expose webhookrelayd agent forwarding metrics
-- [ ] Configure [notification integrations](https://webhookrelay.com/v1/guide/integrations.html) via CRDs
 
 ## Installation
 
@@ -183,3 +171,15 @@ Create the CR:
 ```
 kubectl apply -f cr.yaml
 ```
+
+
+## Configuration
+
+The following table lists has the main configurable parameters (credentials, image version) of the _Webhook Relay Operator_ chart and they apply to both Kubernetes and Helm providers:
+
+| Parameter                                   | Description                            | Default                                                   |
+| ------------------------------------------- | -------------------------------------- | --------------------------------------------------------- |
+| `credentials.key`                           | Access Token key                       |                                                           |
+| `credentials.secret`                        | Access Token secret                    |                                                           |
+| `image.repository`                          | Operator image repository              | `webhookrelay/webhookrelay-operator`                      |
+| `image.tag`                                 | Operator image tag                     | -                                                         |
