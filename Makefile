@@ -54,7 +54,7 @@ image-operator:
 	docker build . -f build/Dockerfile -t $(OPERATOR_IMAGE)
 
 lint:
-	golangci-lint run
+	$(GOLANGCI_LINT) run
 
 ##############################
 #           OLM              #
