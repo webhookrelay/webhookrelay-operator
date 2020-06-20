@@ -71,7 +71,7 @@ type InputSpec struct {
 
 	// CustomDomain can be used to assign a permanent domain name for your input
 	// such as example.hooks.webhookrelay.com
-	CustomDomain string `json:"customDomain,omitempty"`
+	CustomDomain *string `json:"customDomain,omitempty"`
 	// PathPrefix can be combined together with CustomDomain to create 'API like'
 	// functionality where calls from:
 	// petshop.com/dogs -> are forwarded to [dogs store]

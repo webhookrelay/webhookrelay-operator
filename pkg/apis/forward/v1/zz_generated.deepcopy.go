@@ -56,6 +56,11 @@ func (in *InputSpec) DeepCopyInto(out *InputSpec) {
 			(*out)[key] = outVal
 		}
 	}
+	if in.CustomDomain != nil {
+		in, out := &in.CustomDomain, &out.CustomDomain
+		*out = new(string)
+		**out = **in
+	}
 	return
 }
 
