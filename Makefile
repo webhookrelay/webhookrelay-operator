@@ -34,6 +34,7 @@ build:
 go-gen:
 	$(OPERATOR_SDK) generate k8s
 	$(OPERATOR_SDK) generate crds
+	cp deploy/crds/forward.webhookrelay.com_webhookrelayforwards_crd.yaml charts/webhookrelay-operator/crds/crd.yaml
 
 # Run tests
 test:
