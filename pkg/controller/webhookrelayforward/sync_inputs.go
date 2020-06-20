@@ -104,19 +104,39 @@ func inputSpecToInput(spec *forwardv1.InputSpec, bucket *webhookrelay.Bucket) *w
 		}
 	}
 
-	return &webhookrelay.Input{
-		Name:       spec.Name,
-		BucketID:   bucket.ID,
-		FunctionID: spec.FunctionID,
-		Headers:    spec.ResponseHeaders,
-		StatusCode: spec.ResponseStatusCode,
-		Body:       spec.ResponseBody,
-
+	computedInput := &webhookrelay.Input{
+		Name:               spec.Name,
+		BucketID:           bucket.ID,
+		FunctionID:         spec.FunctionID,
+		Headers:            spec.ResponseHeaders,
+		StatusCode:         spec.ResponseStatusCode,
+		Body:               spec.ResponseBody,
 		ResponseFromOutput: spec.ResponseFromOutput,
-		CustomDomain:       spec.CustomDomain,
 		PathPrefix:         spec.PathPrefix,
 		Description:        spec.Description,
 	}
+
+	if spec.CustomDomain != nil {
+		// set, using it
+		computedInput.CustomDomain = *spec.CustomDomain
+	} else {
+		// not set, checking whether there was set one originally and preserving it
+		original, ok := getInputFromBucket(spec.Name, bucket)
+		if ok {
+			computedInput.CustomDomain = original.CustomDomain
+		}
+	}
+
+	return computedInput
+}
+
+func getInputFromBucket(name string, bucket *webhookrelay.Bucket) (*webhookrelay.Input, bool) {
+	for _, input := range bucket.Inputs {
+		if input.Name == name {
+			return input, true
+		}
+	}
+	return nil, false
 }
 
 func getInputsDiff(current, desired []*webhookrelay.Input) *inputsDiff {
