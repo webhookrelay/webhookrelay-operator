@@ -183,3 +183,15 @@ Create the CR:
 ```
 kubectl apply -f cr.yaml
 ```
+
+## HTTP Proxy settings
+
+If your outgoing connections are intercepted by an HTTP/HTTPS proxy - you will need to supply connection details with `--set httpProxy` or `--set httpsProxy` Helm values:
+
+```bash
+helm upgrade --install webhookrelay-operator --namespace=default webhookrelay/webhookrelay-operator \
+  --set credentials.key=$RELAY_KEY --set credentials.secret=$RELAY_SECRET \
+  --set httpsProxy="https://example-proxy.com"
+```
+
+This will set environment variables for the operator and operator will propagate them to the deployed agent.
