@@ -198,6 +198,14 @@ func outputsEqual(current, desired *webhookrelay.Output) bool {
 		return false
 	}
 
+	if current.LockPath != desired.LockPath {
+		return false
+	}
+
+	if current.Disabled != desired.Disabled {
+		return false
+	}
+
 	if current.Timeout != desired.Timeout {
 		return false
 	}
