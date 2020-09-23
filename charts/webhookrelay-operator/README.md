@@ -183,3 +183,5 @@ The following table lists has the main configurable parameters (credentials, ima
 | `credentials.secret`                        | Access Token secret                    |                                                           |
 | `image.repository`                          | Operator image repository              | `webhookrelay/webhookrelay-operator`                      |
 | `image.tag`                                 | Operator image tag                     | -                                                         |
+| `httpProxy`                                 | HTTP proxy to use for API calls        | -                                                         |
+| `httpsProxy`                                | HTTPS proxy to use for API calls       | -                                                         |
