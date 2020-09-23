@@ -3,6 +3,9 @@ package webhookrelayforward
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -71,7 +74,26 @@ func (r *ReconcileWebhookRelayForward) setClientForCluster(instance *forwardv1.W
 		return ErrCredentialsNotProvided
 	}
 
-	apiClient, err := webhookrelay.New(relayKey, relaySecret)
+	var options []webhookrelay.Option
+
+	if r.config.HTTPSPRoxy != "" {
+		proxyURL, err := url.Parse(r.config.HTTPSPRoxy)
+		if err != nil {
+			return fmt.Errorf("failed to configure API client, proxy URL '%s' could not be parsed: %w", r.config.HTTPSPRoxy, err)
+		}
+		// Creating a new HTTP client
+		transport := &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		}
+
+		httpClient := &http.Client{
+			Transport: transport,
+		}
+
+		options = append(options, webhookrelay.WithHTTPClient(httpClient))
+	}
+
+	apiClient, err := webhookrelay.New(relayKey, relaySecret, options...)
 	if err != nil {
 		return err
 	}

@@ -99,15 +99,6 @@ func (r *ReconcileWebhookRelayForward) envForDeployment(cr *forwardv1.WebhookRel
 		},
 	}
 
-	if r.config.HTTPPRoxy != "" {
-		env = append(env,
-			corev1.EnvVar{
-				Name:  "HTTP_PROXY",
-				Value: r.config.HTTPPRoxy,
-			},
-		)
-	}
-
 	if r.config.HTTPSPRoxy != "" {
 		env = append(env,
 			corev1.EnvVar{

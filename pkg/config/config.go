@@ -11,8 +11,9 @@ type (
 			Key    string `envconfig:"RELAY_KEY"`
 			Secret string `envconfig:"RELAY_SECRET"`
 		}
-
-		HTTPPRoxy  string `envconfig:"HTTP_PROXY"`
-		HTTPSPRoxy string `envconfig:"HTTPS_PROXY"`
+		// HTTPS proxy variable.
+		// Note: not using standard HTTPS_PROXY variable so that operator-sdk clients
+		// wouldn't try go through the proxy
+		HTTPSPRoxy string `envconfig:"CLIENT_HTTPS_PROXY"`
 	}
 )
