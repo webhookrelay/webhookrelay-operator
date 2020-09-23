@@ -89,6 +89,16 @@ func (in *OutputSpec) DeepCopyInto(out *OutputSpec) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.LockPath != nil {
+		in, out := &in.LockPath, &out.LockPath
+		*out = new(bool)
+		**out = **in
+	}
+	if in.Disabled != nil {
+		in, out := &in.Disabled, &out.Disabled
+		*out = new(bool)
+		**out = **in
+	}
 	return
 }
 

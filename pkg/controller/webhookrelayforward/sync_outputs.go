@@ -135,21 +135,14 @@ func desiredOutputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucke
 	var desired []*webhookrelay.Output
 
 	for i := range bucketSpec.Outputs {
-		desired = append(desired, inputSpecToOutput(&bucketSpec.Outputs[i], bucket))
+		desired = append(desired, outputSpecToOutput(&bucketSpec.Outputs[i], bucket))
 	}
 
 	return desired
 }
 
-func inputSpecToOutput(spec *forwardv1.OutputSpec, bucket *webhookrelay.Bucket) *webhookrelay.Output {
+func outputSpecToOutput(spec *forwardv1.OutputSpec, bucket *webhookrelay.Bucket) *webhookrelay.Output {
 	header := make(map[string][]string)
-
-	internal := true
-
-	if spec.Internal != nil {
-		// set, checking val
-		internal = *spec.Internal
-	}
 
 	if spec.OverrideHeaders != nil {
 		for k, v := range spec.OverrideHeaders {
@@ -157,16 +150,29 @@ func inputSpecToOutput(spec *forwardv1.OutputSpec, bucket *webhookrelay.Bucket) 
 		}
 	}
 
-	return &webhookrelay.Output{
+	output := &webhookrelay.Output{
 		Name:        spec.Name,
 		BucketID:    bucket.ID,
 		FunctionID:  spec.FunctionID,
 		Headers:     header,
 		Destination: spec.Destination,
 		Timeout:     spec.Timeout,
-		Internal:    internal,
 		Description: spec.Description,
 	}
+
+	if spec.LockPath != nil {
+		output.LockPath = *spec.LockPath
+	}
+
+	if spec.Disabled != nil {
+		output.Disabled = *spec.Disabled
+	}
+
+	if spec.Internal != nil {
+		output.Internal = *spec.Internal
+	}
+
+	return output
 }
 
 func outputsEqual(current, desired *webhookrelay.Output) bool {
@@ -189,6 +195,14 @@ func outputsEqual(current, desired *webhookrelay.Output) bool {
 	}
 
 	if current.Internal != desired.Internal {
+		return false
+	}
+
+	if current.LockPath != desired.LockPath {
+		return false
+	}
+
+	if current.Disabled != desired.Disabled {
 		return false
 	}
 

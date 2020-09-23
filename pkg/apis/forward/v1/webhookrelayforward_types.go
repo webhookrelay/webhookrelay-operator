@@ -102,6 +102,15 @@ type OutputSpec struct {
 	// operator is working with internal agents, this option defaults to True
 	Internal *bool `json:"internal,omitempty"`
 
+	// LockPath ensures that the request path cannot be changed from what is
+	// specified in the destination. For example if request is coming to /v1/webhooks/xxx/github-jenkins,
+	// with lock path 'false' and destination 'http://localhost:8080' it would go to http://localhost:8080/github-jenkins.
+	// However, with lock path 'true', it will be sent to 'http://localhost:8080'
+	LockPath *bool `json:"lockPath,omitempty"`
+
+	// Disabled allows disabling destination without deleting it (when you don't want to send webhooks temporarily)
+	Disabled *bool `json:"disabled,omitempty"`
+
 	// Timeout specifies how long agent should wait for the response
 	Timeout int `json:"timeout,omitempty"`
 
