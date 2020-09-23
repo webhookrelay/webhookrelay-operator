@@ -113,6 +113,10 @@ spec:
                               to send the webhooks. For example it can be http://local-jenkins/ghpr
                               for Jenkins webhooks or any other URL.
                             type: string
+                          disabled:
+                            description: Disabled allows disabling destination without
+                              deleting it (when you don't want to send webhooks temporarily)
+                            type: boolean
                           function_id:
                             description: FunctionID attaches function to this output.
                               Functions on output can modify requests that are then
@@ -123,6 +127,14 @@ spec:
                               be sent to an internal destination. Since operator is
                               working with internal agents, this option defaults to
                               True
+                            type: boolean
+                          lockPath:
+                            description: LockPath ensures that the request path cannot
+                              be changed from what is specified in the destination.
+                              For example if request is coming to /v1/webhooks/xxx/github-jenkins,
+                              with lock path 'false' and destination 'http://localhost:8080'
+                              it would go to http://localhost:8080/github-jenkins.
+                              However, with lock path 'true', it will be sent to 'http://localhost:8080'
                             type: boolean
                           name:
                             type: string
