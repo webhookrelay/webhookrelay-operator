@@ -11,5 +11,8 @@ type (
 			Key    string `envconfig:"RELAY_KEY"`
 			Secret string `envconfig:"RELAY_SECRET"`
 		}
+
+		HTTPPRoxy  string `envconfig:"HTTP_PROXY"`
+		HTTPSPRoxy string `envconfig:"HTTPS_PROXY"`
 	}
 )
