@@ -84,6 +84,8 @@ spec:
       responseStatusCode: 200
     outputs:
     - name: webhook-receiver
+      lockPath: true  # set to 'false' to reuse any extra path WHR received
+      disabled: false # set to 'true' to disable output
       destination: http://destination:5050/webhooks
 ```
 
@@ -175,6 +177,8 @@ spec:
       responseStatusCode: 200
     outputs:
     - name: webhook-receiver
+      lockPath: true  # set to 'false' to reuse any extra path WHR received
+      disabled: false # set to 'true' to disable output
       destination: http://destination:5050/webhooks
 ```
 
