@@ -73,12 +73,8 @@ spec:
                   name: {{ template "webhookrelay-operator.fullname" . }}-secret
                   key: secret
 {{- end }}
-{{- if .Values.httpProxy }}
-            - name: HTTP_PROXY
-              value: {{ .Values.httpProxy }}
-{{- end }}
 {{- if .Values.httpsProxy }}
-            - name: HTTPS_PROXY
+            - name: CLIENT_HTTPS_PROXY
               value: {{ .Values.httpsProxy }}
 {{- end }} 
           resources:
