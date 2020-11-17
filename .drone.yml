@@ -43,6 +43,7 @@ steps:
   image: plugins/docker
   settings:
     auto_tag: true
+    registry: quay.io
     repo: webhookrelay/webhookrelay-operator
     dockerfile: build/Dockerfile
     password:
