@@ -39,7 +39,7 @@ steps:
   - ct lint --config .scripts/ct.yaml
 
 - name: publish-multiarch-images
-  image: golang:1.17
+  image: quay.io/unikiosk/test-base
   commands:
     # Set the hosts
     - docker login --username "$${DOCKER_USERNAME}" --password "$${DOCKER_PASSWORD}"
