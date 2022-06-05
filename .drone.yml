@@ -41,6 +41,8 @@ steps:
 - name: publish-multiarch-images
   image: quay.io/unikiosk/test-base
   commands:
+    # Get latest tag version
+    - git fetch --tags
     # Set the hosts
     - docker login --username "$${DOCKER_USERNAME}" --password "$${DOCKER_PASSWORD}"
     - docker buildx create --name cluster
