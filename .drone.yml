@@ -12,20 +12,20 @@ workspace:
 
 steps:
 - name: test
-  pull: default
+  pull: golang:1.17
   image: golang
   commands:
   - make test
 
 - name: build
   pull: default
-  image: golang
+  image: golang:1.17
   commands:
   - make build
 
 - name: lint-code
   pull: default
-  image: golang
+  image: golang:1.17
   commands:
   - make golangci-lint
   - make lint
@@ -39,7 +39,7 @@ steps:
   - ct lint --config .scripts/ct.yaml
 
 - name: publish-multiarch-images
-  image: golang
+  image: golang:1.17
   commands:
     # Set the hosts
     - docker login --username "$${DOCKER_USERNAME}" --password "$${DOCKER_PASSWORD}"
