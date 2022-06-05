@@ -55,8 +55,8 @@ image-operator:
 	docker build . -f build/Dockerfile -t $(OPERATOR_IMAGE)
 
 # Cross-platform images
-buildx-images:
-	docker buildx build --push --platform linux/amd64,linux/arm64,linux/arm/v7 \
+buildx-images:	
+	docker buildx build --push --platform linux/arm64,linux/arm/v7 \
 	  -t webhookrelay/webhookrelay-operator:latest \
 	  -t webhookrelay/webhookrelay-operator:$(VERSION) -f build/Dockerfile .
 
