@@ -56,10 +56,9 @@ image-operator:
 
 # Cross-platform images
 buildx-images:
-	docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 \
+	docker buildx build --push --platform linux/amd64,linux/arm64,linux/arm/v7 \
 	  -t webhookrelay/webhookrelay-operator:latest \
-	  -t webhookrelay/webhookrelay-operator:$(VERSION) \ 
-		--push -f build/Dockerfile .
+	  -t webhookrelay/webhookrelay-operator:$(VERSION) -f build/Dockerfile .
 
 lint:
 	$(GOLANGCI_LINT) run
