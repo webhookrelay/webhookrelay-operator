@@ -38,7 +38,7 @@ go-gen:
 
 # Run tests
 test:
-	go get github.com/mfridman/tparse
+	go install github.com/mfridman/tparse@v0.9.0
 	go test -json -v `go list ./... | egrep -v /tests` -cover | tparse -all -smallscreen
 
 ## Start local Webhook Relay operator
