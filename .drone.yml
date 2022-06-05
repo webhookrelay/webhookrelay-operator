@@ -38,15 +38,31 @@ steps:
   - git fetch k8s master
   - ct lint --config .scripts/ct.yaml
 
-- name: publish
-  pull: default
-  image: plugins/docker
-  settings:
-    auto_tag: true
-    repo: webhookrelay/webhookrelay-operator
-    dockerfile: build/Dockerfile
-    password:
-      from_secret: docker_password
-    username:
+- name: publish-multiarch-images
+  image: golang
+  commands:
+    # Set the hosts
+    - docker login --username "$${DOCKER_USERNAME}" --password "$${DOCKER_PASSWORD}"
+    - docker buildx create --name cluster
+    - DOCKER_HOST=$${DOCKER_ARM_BUILDER} docker buildx create --name cluster --append
+    - docker buildx use cluster
+    # Build the image
+    - make buildx-images
+  environment:
+    DOCKER_USERNAME:
       from_secret: docker_username
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_ARM_BUILDER:
+      from_secret: docker_arm_builder
+  volumes:
+    - name: dockersocket
+      path: /var/run/docker.sock
 
+# TODO: enable once OK
+# trigger:
+#   branch:
+#   - master
+#   ref:
+#     include:
+#     - refs/tags/**
