@@ -49,6 +49,7 @@ steps:
     - docker buildx create --name cluster
     - DOCKER_HOST=$${DOCKER_ARM_BUILDER} docker buildx create --name cluster --append
     - docker buildx use cluster
+    - docker buildx ls
     # Build the image
     - make buildx-images
   environment:
