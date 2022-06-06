@@ -10,6 +10,11 @@ workspace:
   base: /go
   path: src/github.com/webhookrelay/webhookrelay-operator
 
+volumes:
+  - name: dockersocket
+    host:
+      path: /var/run/docker.sock
+
 steps:
 - name: test
   pull: golang:1.17
