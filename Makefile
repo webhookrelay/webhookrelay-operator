@@ -56,31 +56,12 @@ image-operator:
 
 # Cross-platform images
 buildx-images:	
-	docker buildx build --push --platform linux/arm64,linux/arm/v7 \
+	docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 \
 	  -t webhookrelay/webhookrelay-operator:latest \
-	  -t webhookrelay/webhookrelay-operator:$(VERSION) -f build/Dockerfile .
+	  -f build/Dockerfile .
 
 lint:
 	$(GOLANGCI_LINT) run
-
-##############################
-#           OLM              #
-##############################
-
-olm-install:
-	$(OPERATOR_SDK) olm install
-
-gen-csv:
-	$(OPERATOR_SDK) operator-sdk olm-catalog gen-csv --csv-version $(VERSION) --from-version $(OPERATOR_PREVIOUS_VERSION)
-
-gen-bundle:
-	$(OPERATOR_SDK) bundle create --generate-only
-
-validate-bundle:
-	$(OPERATOR_SDK) bundle validate deploy/olm-catalog/webhookrelay-operator/
-
-test-package-manifests:
-	$(OPERATOR_SDK) run packagemanifests --operator-version $(VERSION)
 
 ##############################
 #     Third-party tools      #

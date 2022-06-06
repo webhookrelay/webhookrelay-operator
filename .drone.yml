@@ -45,8 +45,9 @@ steps:
     - git fetch --tags
     # Set the hosts
     - docker login --username "$${DOCKER_USERNAME}" --password "$${DOCKER_PASSWORD}"
-    # - docker buildx create --name cluster
-    - DOCKER_HOST=$${DOCKER_ARM_BUILDER} docker buildx create --name cluster
+    # Create buildx cluster
+    - docker buildx create --name cluster
+    - DOCKER_HOST=$${DOCKER_ARM_BUILDER} docker buildx create --name cluster --append
     - docker buildx use cluster
     # Build the image
     - make buildx-images
