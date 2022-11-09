@@ -82,5 +82,5 @@ yq: ## Install yq.
 
 golangci-lint: ## Install golangci-lint
 	@if [ ! -f $(GOLANGCI_LINT) ]; then \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(BUILD_DIR) v1.27.0; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(BUILD_DIR) v1.50.1; \
 	fi
