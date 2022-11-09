@@ -184,6 +184,13 @@ func (in *WebhookRelayForwardSpec) DeepCopyInto(out *WebhookRelayForwardSpec) {
 		}
 	}
 	in.Resources.DeepCopyInto(&out.Resources)
+	if in.ExtraEnvVars != nil {
+		in, out := &in.ExtraEnvVars, &out.ExtraEnvVars
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	return
 }
 

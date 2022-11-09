@@ -153,6 +153,12 @@ spec:
                       type: array
                   type: object
                 type: array
+              extraEnvVars:
+                additionalProperties:
+                  type: string
+                description: Extra environment variables to pass to the relay agent
+                  container
+                type: object
               image:
                 description: Image is webhookrelayd container, defaults to webhookrelay/webhookrelayd:latest
                 type: string

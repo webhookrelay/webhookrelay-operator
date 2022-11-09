@@ -17,20 +17,20 @@ volumes:
 
 steps:
 - name: test
-  pull: golang:1.17
+  pull: golang:1.19
   image: golang
   commands:
   - make test
 
 - name: build
   pull: default
-  image: golang:1.17
+  image: golang:1.19
   commands:
   - make build
 
 - name: lint-code
   pull: default
-  image: golang:1.17
+  image: golang:1.19
   commands:
   - make golangci-lint
   - make lint

@@ -148,6 +148,13 @@ func (r *ReconcileWebhookRelayForward) envForDeployment(cr *forwardv1.WebhookRel
 		)
 	}
 
+	for name, value := range cr.Spec.ExtraEnvVars {
+		env = append(env, corev1.EnvVar{
+			Name:  name,
+			Value: value,
+		})
+	}
+
 	return env
 }
 
