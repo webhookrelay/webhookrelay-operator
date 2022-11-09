@@ -61,7 +61,7 @@ buildx-images:
 	  -f build/Dockerfile .
 
 lint:
-	$(GOLANGCI_LINT) run
+	$(GOLANGCI_LINT) run --timeout 5m
 
 ##############################
 #     Third-party tools      #
