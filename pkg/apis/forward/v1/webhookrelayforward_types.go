@@ -29,7 +29,7 @@ type WebhookRelayForwardSpec struct {
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// Extra environment variables to pass to the relay agent container
-	ExtraEnvVars map[string]string `json:"extraEnvVars,omitempty"`
+	ExtraEnvVars []corev1.EnvVar `json:"extraEnvVars,omitempty"`
 }
 
 // BucketSpec defines a bucket that groups one or more inputs (public endpoints) and

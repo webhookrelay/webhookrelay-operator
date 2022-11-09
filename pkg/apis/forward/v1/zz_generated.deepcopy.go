@@ -5,6 +5,7 @@
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -186,9 +187,9 @@ func (in *WebhookRelayForwardSpec) DeepCopyInto(out *WebhookRelayForwardSpec) {
 	in.Resources.DeepCopyInto(&out.Resources)
 	if in.ExtraEnvVars != nil {
 		in, out := &in.ExtraEnvVars, &out.ExtraEnvVars
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
+		*out = make([]corev1.EnvVar, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
 	return
