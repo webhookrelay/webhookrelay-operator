@@ -26,6 +26,9 @@ build:
 		-o ./build/_output/bin/webhookrelay-operator \
 		./cmd/manager
 
+ko-build:
+	GOFLAGS="$(LDFLAGS)" ko build -B --platform=all -t latest -t $(GIT_REVISION) ./cmd/*
+
 ##############################
 #           DEV              #
 ##############################
@@ -56,12 +59,24 @@ image-operator:
 
 # Cross-platform images
 buildx-images:	
-	docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 \
+	docker buildx build --builder synpse \
+	  --push \
+		--cache-from=type=registry,ref=webhookrelay/webhookrelay-operator \
+	  --platform linux/amd64,linux/arm64,linux/arm/v7 \
 	  -t webhookrelay/webhookrelay-operator:latest \
 	  -f build/Dockerfile .
 
+# buildkit-images:
+# 	buildctl build \
+#   --frontend dockerfile.v0 \
+# 	--local context=. \
+#   --local dockerfile=./build \
+#   --opt platform=linux/amd64,linux/arm64,linux/arm/v7 \
+#   --output type=image,name=docker.io/webhookrelay/webhookrelay-operator:latest,push=true \
+# 	...
+
 lint:
-	$(GOLANGCI_LINT) run
+	$(GOLANGCI_LINT) run --timeout 5m
 
 ##############################
 #     Third-party tools      #
@@ -82,5 +97,5 @@ yq: ## Install yq.
 
 golangci-lint: ## Install golangci-lint
 	@if [ ! -f $(GOLANGCI_LINT) ]; then \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(BUILD_DIR) v1.27.0; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(BUILD_DIR) v1.50.1; \
 	fi

@@ -10,27 +10,22 @@ workspace:
   base: /go
   path: src/github.com/webhookrelay/webhookrelay-operator
 
-volumes:
-  - name: dockersocket
-    host:
-      path: /var/run/docker.sock
-
 steps:
 - name: test
-  pull: golang:1.17
+  pull: golang:1.19
   image: golang
   commands:
   - make test
 
 - name: build
   pull: default
-  image: golang:1.17
+  image: golang:1.19
   commands:
   - make build
 
 - name: lint-code
   pull: default
-  image: golang:1.17
+  image: golang:1.19
   commands:
   - make golangci-lint
   - make lint
@@ -42,36 +37,3 @@ steps:
   - git remote add k8s https://github.com/webhookrelay/webhookrelay-operator
   - git fetch k8s master
   - ct lint --config .scripts/ct.yaml
-
-- name: publish-multiarch-images
-  image: quay.io/unikiosk/test-base
-  commands:
-    # Get latest tag version
-    - git fetch --tags
-    # Set the hosts
-    - docker login --username "$${DOCKER_USERNAME}" --password "$${DOCKER_PASSWORD}"
-    # Create buildx cluster
-    - docker buildx create --name cluster
-    - DOCKER_HOST=$${DOCKER_ARM_BUILDER} docker buildx create --name cluster --append
-    - docker buildx use cluster
-    - docker buildx ls
-    # Build the image
-    - make buildx-images
-  environment:
-    DOCKER_USERNAME:
-      from_secret: docker_username
-    DOCKER_PASSWORD:
-      from_secret: docker_password
-    DOCKER_ARM_BUILDER:
-      from_secret: docker_arm_builder
-  volumes:
-    - name: dockersocket
-      path: /var/run/docker.sock
-
-# TODO: enable once OK
-# trigger:
-#   branch:
-#   - master
-#   ref:
-#     include:
-#     - refs/tags/**

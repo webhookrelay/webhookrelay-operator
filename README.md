@@ -180,6 +180,12 @@ spec:
       lockPath: true  # set to 'false' to reuse any extra path WHR received
       disabled: false # set to 'true' to disable output
       destination: http://destination:5050/webhooks
+  # Use custom Docker image
+  #image: "quay.io/your-custom/image:latest"
+  # Add custom env variables to the agent container
+  extraEnvVars:
+  - name: WEBSOCKET_TRANSPORT
+    value: "true"
 ```
 
 Create the CR:

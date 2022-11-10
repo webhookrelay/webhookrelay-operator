@@ -1,4 +1,4 @@
-FROM golang:1.17 as build
+FROM golang:1.19 as build
 COPY . /go/src/github.com/webhookrelay/webhookrelay-operator
 WORKDIR /go/src/github.com/webhookrelay/webhookrelay-operator
 RUN make build

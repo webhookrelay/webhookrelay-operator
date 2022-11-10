@@ -148,6 +148,10 @@ func (r *ReconcileWebhookRelayForward) envForDeployment(cr *forwardv1.WebhookRel
 		)
 	}
 
+	if len(cr.Spec.ExtraEnvVars) > 0 {
+		env = append(env, cr.Spec.ExtraEnvVars...)
+	}
+
 	return env
 }
 
