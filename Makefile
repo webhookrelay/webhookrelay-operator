@@ -26,6 +26,9 @@ build:
 		-o ./build/_output/bin/webhookrelay-operator \
 		./cmd/manager
 
+ko-build:
+	GOFLAGS="$(LDFLAGS)" ko build -B --platform=all -t latest -t $(GIT_REVISION) ./cmd/*
+
 ##############################
 #           DEV              #
 ##############################

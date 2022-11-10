@@ -10,11 +10,6 @@ workspace:
   base: /go
   path: src/github.com/webhookrelay/webhookrelay-operator
 
-volumes:
-  - name: dockersocket
-    host:
-      path: /var/run/docker.sock
-
 steps:
 - name: test
   pull: golang:1.19
@@ -42,30 +37,3 @@ steps:
   - git remote add k8s https://github.com/webhookrelay/webhookrelay-operator
   - git fetch k8s master
   - ct lint --config .scripts/ct.yaml
-
-- name: publish-multiarch-images
-  image: quay.io/unikiosk/test-base
-  commands:
-    # Get latest tag version
-    - git fetch --tags
-    - docker login --username "$${DOCKER_USERNAME}" --password "$${DOCKER_PASSWORD}"
-    - docker buildx create --name synpse --driver remote $${DOCKER_AMD64_BUILDER}
-    - docker buildx create --name synpse --driver remote --append $${DOCKER_ARM_BUILDER}
-    - make buildx-images
-  environment:
-    DOCKER_USERNAME:
-      from_secret: docker_username
-    DOCKER_PASSWORD:
-      from_secret: docker_password
-    DOCKER_ARM_BUILDER:
-      from_secret: docker_arm_builder
-    DOCKER_AMD64_BUILDER:
-      from_secret: docker_amd64_builder
-
-# TODO: enable once OK
-# trigger:
-#   branch:
-#   - master
-#   ref:
-#     include:
-#     - refs/tags/**
