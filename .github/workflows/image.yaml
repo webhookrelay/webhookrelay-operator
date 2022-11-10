@@ -22,8 +22,6 @@ jobs:
       - uses: imjasonh/setup-ko@v0.6
         env:
           KO_DOCKER_REPO: webhookrelay/webhookrelay-operator
-      - env:
-          auth_token: ${{ secrets.auth_token }}
         run: |
           echo "${{ secrets.DOCKER_USERNAME }}" | ko login docker.io --username "${{ secrets.DOCKER_PASSWORD }}" --password-stdin
           make ko-build
