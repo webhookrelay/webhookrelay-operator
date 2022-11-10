@@ -62,7 +62,7 @@ buildx-images:
 	  --push \
 		--cache-from=type=registry,ref=webhookrelay/webhookrelay-operator \
 	  --platform linux/amd64,linux/arm64,linux/arm/v7 \
-	  -t webhookrelay/webhookrelay-operator:latest \
+	  -t webhookrelay/webhookrelay-operator:dev \
 	  -f build/Dockerfile .
 
 # buildkit-images:
