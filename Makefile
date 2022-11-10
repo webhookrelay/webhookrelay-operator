@@ -13,9 +13,9 @@ YQ = $(BUILD_DIR)/yq
 GOLANGCI_LINT = $(BUILD_DIR)/golangci-lint
 OPERATOR_SDK = $(BUILD_DIR)/operator-sdk
 
-LDFLAGS		+= -X=github.com/webhookrelay/webhookrelay-operator/version.Version=$(VERSION)
-LDFLAGS		+= -X=github.com/webhookrelay/webhookrelay-operator/version.Revision=$(GIT_REVISION)
-LDFLAGS		+= -X=github.com/webhookrelay/webhookrelay-operator/version.BuildDate=$(JOBDATE)
+# LDFLAGS		+= -X=github.com/webhookrelay/webhookrelay-operator/version.Version=$(VERSION)
+# LDFLAGS		+= -X=github.com/webhookrelay/webhookrelay-operator/version.Revision=$(GIT_REVISION)
+# LDFLAGS		+= -X=github.com/webhookrelay/webhookrelay-operator/version.BuildDate=$(JOBDATE)
 
 # Build operator binary
 .PHONY: build
@@ -26,7 +26,7 @@ build:
 		./cmd/manager
 
 ko-build:
-	GOFLAGS="$(LDFLAGS)" ko build -B --platform=all -t latest -t $(GIT_REVISION) ./cmd/*
+	ko build -B --platform=all -t latest -t $(GIT_REVISION) ./cmd/*
 
 ##############################
 #           DEV              #

@@ -185,7 +185,15 @@ func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookR
 	}
 	podTemplateSpec.Labels = podLabels
 	podTemplateSpec.Name = "webhookrelay"
-	// TODO: set namespace
+
+	if len(cr.Spec.Resources.Limits) > 0 {
+		podTemplateSpec.Spec.Containers[0].Resources.Limits = cr.Spec.Resources.Limits
+	}
+
+	if len(cr.Spec.Resources.Requests) > 0 {
+		podTemplateSpec.Spec.Containers[0].Resources.Requests = cr.Spec.Resources.Requests
+	}
+
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cr.Name + "-whr-deployment",
