@@ -25,5 +25,5 @@ jobs:
       - env:
           auth_token: ${{ secrets.auth_token }}
         run: |
-          echo "${{ secrets.DOCKER_USERNAME }}" | ko login ghcr.io --username "${{ secrets.DOCKER_PASSWORD }}" --password-stdin
+          echo "${{ secrets.DOCKER_USERNAME }}" | ko login docker.io --username "${{ secrets.DOCKER_PASSWORD }}" --password-stdin
           make ko-build
