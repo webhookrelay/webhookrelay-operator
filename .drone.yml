@@ -48,14 +48,9 @@ steps:
   commands:
     # Get latest tag version
     - git fetch --tags
-    # Set the hosts
     - docker login --username "$${DOCKER_USERNAME}" --password "$${DOCKER_PASSWORD}"
-    # Create buildx cluster
-    - docker buildx create --name cluster
-    - DOCKER_HOST=$${DOCKER_ARM_BUILDER} docker buildx create --name cluster --append
-    - docker buildx use cluster
-    - docker buildx ls
-    # Build the image
+    - docker buildx create --name synpse --driver remote $${DOCKER_AMD64_BUILDER}
+    - docker buildx create --name synpse --driver remote --append $${DOCKER_ARM_BUILDER}
     - make buildx-images
   environment:
     DOCKER_USERNAME:
@@ -64,9 +59,8 @@ steps:
       from_secret: docker_password
     DOCKER_ARM_BUILDER:
       from_secret: docker_arm_builder
-  volumes:
-    - name: dockersocket
-      path: /var/run/docker.sock
+    DOCKER_AMD64_BUILDER:
+      from_secret: docker_amd64_builder
 
 # TODO: enable once OK
 # trigger:

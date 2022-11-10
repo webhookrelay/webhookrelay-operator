@@ -56,9 +56,21 @@ image-operator:
 
 # Cross-platform images
 buildx-images:	
-	docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 \
+	docker buildx build --builder synpse \
+	  --push \
+		--cache-from=type=registry,ref=webhookrelay/webhookrelay-operator \
+	  --platform linux/amd64,linux/arm64,linux/arm/v7 \
 	  -t webhookrelay/webhookrelay-operator:latest \
 	  -f build/Dockerfile .
+
+# buildkit-images:
+# 	buildctl build \
+#   --frontend dockerfile.v0 \
+# 	--local context=. \
+#   --local dockerfile=./build \
+#   --opt platform=linux/amd64,linux/arm64,linux/arm/v7 \
+#   --output type=image,name=docker.io/webhookrelay/webhookrelay-operator:latest,push=true \
+# 	...
 
 lint:
 	$(GOLANGCI_LINT) run --timeout 5m
