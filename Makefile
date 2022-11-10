@@ -26,7 +26,7 @@ build:
 		./cmd/manager
 
 ko-build:
-	ko build -B --platform=all -t latest -t $(GIT_REVISION) ./cmd/*
+	ko build --platform=all --bare -t latest -t $(VERSION) ./cmd/*
 
 ##############################
 #           DEV              #
