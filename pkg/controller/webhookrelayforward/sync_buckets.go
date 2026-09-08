@@ -20,7 +20,7 @@ const (
 	bucketAuthTypeToken = "token"
 )
 
-func (r *ReconcileWebhookRelayForward) ensureBucketConfiguration(logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
+func (r *ReconcileWebhookRelayForward) ensureBucketConfiguration(ctx context.Context, logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
 	var (
 		err    error
 		errors []string
@@ -38,7 +38,7 @@ func (r *ReconcileWebhookRelayForward) ensureBucketConfiguration(logger logr.Log
 		if bucketSpec.Description == "" {
 			bucketSpec.Description = getBucketDescription(instance)
 		}
-		desiredAuth, authErr := r.bucketAuthFromSpec(instance.GetNamespace(), bucketSpec.Auth)
+		desiredAuth, authErr := r.bucketAuthFromSpec(ctx, instance.GetNamespace(), bucketSpec.Auth)
 		if authErr != nil {
 			errors = append(errors, fmt.Sprintf("bucket %q: %v", bucketSpec.Name, authErr))
 			continue
@@ -160,7 +160,7 @@ func patchBucketFromSpec(bucket *webhookrelay.Bucket, spec *forwardv1.BucketSpec
 	return updated
 }
 
-func (r *ReconcileWebhookRelayForward) bucketAuthFromSpec(namespace string, spec *forwardv1.BucketAuthSpec) (*webhookrelay.BucketAuth, error) {
+func (r *ReconcileWebhookRelayForward) bucketAuthFromSpec(ctx context.Context, namespace string, spec *forwardv1.BucketAuthSpec) (*webhookrelay.BucketAuth, error) {
 	if spec == nil {
 		return nil, nil
 	}
@@ -190,7 +190,7 @@ func (r *ReconcileWebhookRelayForward) bucketAuthFromSpec(namespace string, spec
 		return nil, fmt.Errorf("auth type %s requires secretKeyRef name and key", spec.Type)
 	}
 	secret := &corev1.Secret{}
-	if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: spec.SecretKeyRef.Name}, secret); err != nil {
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: spec.SecretKeyRef.Name}, secret); err != nil {
 		return nil, fmt.Errorf("read authentication Secret %q: %w", spec.SecretKeyRef.Name, err)
 	}
 	value, ok := secret.Data[spec.SecretKeyRef.Key]

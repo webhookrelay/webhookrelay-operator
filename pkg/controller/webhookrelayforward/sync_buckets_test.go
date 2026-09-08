@@ -1,6 +1,7 @@
 package webhookrelayforward
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/webhookrelay/webhookrelay-go"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake" //nolint:staticcheck // Required while the operator uses controller-runtime v0.6.
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	forwardv1 "github.com/webhookrelay/webhookrelay-operator/pkg/apis/forward/v1"
 )
@@ -29,7 +30,7 @@ func TestBucketAuthFromSpecReadsBasicPasswordFromSameNamespace(t *testing.T) {
 	}
 	reconciler := &ReconcileWebhookRelayForward{client: fake.NewFakeClient(secret)}
 
-	auth, err := reconciler.bucketAuthFromSpec(testForwardNamespace, &forwardv1.BucketAuthSpec{
+	auth, err := reconciler.bucketAuthFromSpec(context.Background(), testForwardNamespace, &forwardv1.BucketAuthSpec{
 		Type: bucketAuthTypeBasic, Username: testBucketAuthUser,
 		SecretKeyRef: &forwardv1.SecretKeyRef{
 			Name: testBucketAuthName,
@@ -47,7 +48,7 @@ func TestBucketAuthFromSpecReadsBasicPasswordFromSameNamespace(t *testing.T) {
 func TestBucketAuthFromSpecValidatesBeforeSecretRead(t *testing.T) {
 	reconciler := &ReconcileWebhookRelayForward{}
 
-	_, err := reconciler.bucketAuthFromSpec(testForwardNamespace, &forwardv1.BucketAuthSpec{Type: bucketAuthTypeBasic})
+	_, err := reconciler.bucketAuthFromSpec(context.Background(), testForwardNamespace, &forwardv1.BucketAuthSpec{Type: bucketAuthTypeBasic})
 
 	require.ErrorContains(t, err, "requires username")
 }

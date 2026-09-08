@@ -6,6 +6,10 @@ metadata:
     {{- include "webhookrelay-operator.labels" . | nindent 4 }}
 spec:
   replicas: 1
+  # The pre-modernization operator used a ConfigMap lock that cannot safely
+  # overlap with the standard Lease lock during a rolling update.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "webhookrelay-operator.selectorLabels" . | nindent 6 }}
@@ -35,9 +39,6 @@ spec:
             - name: metrics
               containerPort: 8383
               protocol: TCP
-            - name: opmetrics 
-              containerPort: 8686
-              protocol: TCP
             - name: health
               containerPort: 8986
               protocol: TCP
@@ -47,7 +48,7 @@ spec:
               port: health
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: health
           env:
             - name: WATCH_NAMESPACE

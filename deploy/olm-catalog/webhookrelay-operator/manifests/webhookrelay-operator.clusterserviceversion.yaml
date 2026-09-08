@@ -62,7 +62,9 @@ spec:
           selector:
             matchLabels:
               name: webhookrelay-operator
-          strategy: {}
+          # Avoid overlapping the legacy ConfigMap leader with the Lease-based manager.
+          strategy:
+            type: Recreate
           template:
             metadata:
               labels:
@@ -111,6 +113,16 @@ spec:
           - get
           - list
           - patch
+          - update
+          - watch
+        - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - create
+          - get
+          - list
           - update
           - watch
         - apiGroups:

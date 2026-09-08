@@ -1,6 +1,7 @@
 package webhookrelayforward
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -11,8 +12,8 @@ import (
 
 // ensureRoutingConfiguration check buckets, inputs and outputs on the Webhook Relay server side. If something needs to be
 // changed - it performs necessary configuration changes
-func (r *ReconcileWebhookRelayForward) ensureRoutingConfiguration(logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
-	err := r.ensureBucketConfiguration(logger, instance)
+func (r *ReconcileWebhookRelayForward) ensureRoutingConfiguration(ctx context.Context, logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
+	err := r.ensureBucketConfiguration(ctx, logger, instance)
 	if err != nil {
 		return err
 	}

@@ -278,7 +278,7 @@ const (
 // +k8s:openapi-gen=true
 type WebhookRelayForwardStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
+	// Run "make go-gen" after modifying API types.
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 
 	// AgentStatus indicates agent deployment status
@@ -313,8 +313,4 @@ type WebhookRelayForwardList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []WebhookRelayForward `json:"items"`
-}
-
-func init() {
-	SchemeBuilder.Register(&WebhookRelayForward{}, &WebhookRelayForwardList{})
 }

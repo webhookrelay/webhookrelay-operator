@@ -6,13 +6,11 @@ OPERATOR_IMAGE ?= webhookrelay/webhookrelay-operator:test
 
 GO_ENV = GOOS=linux CGO_ENABLED=0
 GO_BUILD_CMD = go build
-SDK_VERSION = v0.18.1
 CONTROLLER_GEN_VERSION = v0.19.0
 MACHINE = $(shell uname -m)
 BUILD_DIR = "build"
 YQ = $(BUILD_DIR)/yq
 GOLANGCI_LINT = $(BUILD_DIR)/golangci-lint
-OPERATOR_SDK = $(BUILD_DIR)/operator-sdk
 
 # Build operator binary
 .PHONY: build
@@ -50,7 +48,7 @@ e2e:
 
 ## Start local Webhook Relay operator
 local-run:
-	OPERATOR_NAME=webhookrelay-operator $(OPERATOR_SDK) run local --operator-flags="--zap-devel"
+	WATCH_NAMESPACE=$${WATCH_NAMESPACE:-default} go run ./cmd/manager --zap-devel
 
 clean-crd:
 	kubectl delete -f deploy/crds/forward.webhookrelay.com_webhookrelayforwards_crd.yaml
@@ -85,13 +83,6 @@ lint:
 ##############################
 #     Third-party tools      #
 ##############################
-
-operator-sdk:
-	# Download sdk only if it's not available.
-	@if [ ! -f $(OPERATOR_SDK) ]; then \
-		curl -Lo $(OPERATOR_SDK) https://github.com/operator-framework/operator-sdk/releases/download/$(SDK_VERSION)/operator-sdk-$(SDK_VERSION)-$(MACHINE)-linux-gnu && \
-		chmod +x $(OPERATOR_SDK); \
-	fi
 
 yq: ## Install yq.
 	@if [ ! -f $(YQ) ]; then \

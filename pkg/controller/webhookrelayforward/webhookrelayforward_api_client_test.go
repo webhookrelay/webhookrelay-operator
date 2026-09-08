@@ -1,6 +1,7 @@
 package webhookrelayforward
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -40,7 +41,7 @@ func TestSetClientRejectsCrossNamespaceSecretBeforeKubernetesRead(t *testing.T) 
 	// A nil Kubernetes client makes this test fail with a panic if validation
 	// ever moves after the Secret read.
 	reconciler := &ReconcileWebhookRelayForward{}
-	err := reconciler.setClientForCluster(instance)
+	err := reconciler.setClientForCluster(context.Background(), instance)
 
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrCrossNamespaceSecretReference))
