@@ -21,6 +21,9 @@ K3S_DATA_DIR="/var/lib/webhookrelay-operator-e2e-${RUN_ID}"
 K3S_CLIENT_DATA_DIR="${RUN_DIR}/client-data"
 NAMESPACE="webhookrelay-operator-e2e"
 IMAGE="webhookrelay-operator-e2e:${RUN_ID}"
+PRODUCTION_MODE="${WHR_OPERATOR_E2E_PRODUCTION:-false}"
+BUCKET_NAME="operator-e2e-${RUN_ID}"
+BUCKET_DESCRIPTION="Webhook Relay operator production e2e run ${RUN_ID}"
 TEST_STATUS=0
 
 log() {
@@ -48,6 +51,16 @@ preflight() {
   [[ ! -e /var/lib/rancher/k3s ]] || fail "the default k3s data directory already exists"
   [[ ! -e /var/lib/kubelet ]] || fail "the default kubelet data directory already exists"
   [[ ! -e /run/k3s ]] || fail "the k3s runtime directory already exists"
+  mkdir -p "${RUN_DIR}"
+  if [[ "${PRODUCTION_MODE}" == "true" ]]; then
+    [[ -n "${WHR_E2E_RELAY_KEY:-}" ]] || fail "WHR_E2E_RELAY_KEY is required in production mode"
+    [[ -n "${WHR_E2E_RELAY_SECRET:-}" ]] || fail "WHR_E2E_RELAY_SECRET is required in production mode"
+    umask 077
+    printf 'user = "%s:%s"\n' "${WHR_E2E_RELAY_KEY}" "${WHR_E2E_RELAY_SECRET}" \
+      >"${RUN_DIR}/production-curl.conf"
+  elif [[ "${PRODUCTION_MODE}" != "false" ]]; then
+    fail "WHR_OPERATOR_E2E_PRODUCTION must be true or false"
+  fi
 }
 
 download_tools() {
@@ -128,27 +141,37 @@ build_and_import_image() {
 }
 
 install_operator() {
+  local -a helm_args
   log "installing the chart"
-  helm upgrade --install webhookrelay-operator "${REPO_ROOT}/charts/webhookrelay-operator" \
+  helm_args=(upgrade --install webhookrelay-operator "${REPO_ROOT}/charts/webhookrelay-operator" \
     --namespace "${NAMESPACE}" --create-namespace --wait --timeout 180s \
     --set-string image.repository=webhookrelay-operator-e2e \
     --set-string "image.tag=${RUN_ID}" \
-    --set image.pullPolicy=IfNotPresent \
-    --set-string httpsProxy=http://127.0.0.1:9
+    --set image.pullPolicy=IfNotPresent)
+  if [[ "${PRODUCTION_MODE}" == "false" ]]; then
+    helm_args+=(--set-string httpsProxy=http://127.0.0.1:9)
+  fi
+  helm "${helm_args[@]}"
   kubectl -n "${NAMESPACE}" rollout status deployment/webhookrelay-operator --timeout=120s
-  kubectl -n "${NAMESPACE}" get deployment/webhookrelay-operator -o json | jq -e \
-    --arg image "${IMAGE}" '
+  kubectl -n "${NAMESPACE}" get deployment/webhookrelay-operator -o json | jq -e --arg image "${IMAGE}" '
       .spec.template.spec.serviceAccountName == "webhookrelay-operator" and
-      .spec.template.spec.containers[0].image == $image and
-      any(.spec.template.spec.containers[0].env[];
-        .name == "CLIENT_HTTPS_PROXY" and .value == "http://127.0.0.1:9")
+      .spec.template.spec.containers[0].image == $image
     ' >/dev/null || fail "operator Deployment wiring is invalid"
 }
 
-exercise_reconcile() {
-  log "creating a CR with isolated, intentionally invalid credentials"
+apply_forward() {
+  local response_body="$1"
+  local credentials_file="${RUN_DIR}/credentials.env"
+  local relay_key="e2e-invalid-key"
+  local relay_secret="e2e-invalid-secret"
+  if [[ "${PRODUCTION_MODE}" == "true" ]]; then
+    relay_key="${WHR_E2E_RELAY_KEY}"
+    relay_secret="${WHR_E2E_RELAY_SECRET}"
+  fi
+  umask 077
+  printf 'key=%s\nsecret=%s\n' "${relay_key}" "${relay_secret}" >"${credentials_file}"
   kubectl -n "${NAMESPACE}" create secret generic e2e-credentials \
-    --from-literal=key=e2e-invalid-key --from-literal=secret=e2e-invalid-secret
+    --from-env-file="${credentials_file}" --dry-run=client -o yaml | kubectl apply -f -
   kubectl apply -f - <<EOF
 apiVersion: forward.webhookrelay.com/v1
 kind: WebhookRelayForward
@@ -159,8 +182,33 @@ spec:
   secretRefName: e2e-credentials
   image: busybox:1.36.1
   buckets:
-    - name: operator-e2e-never-created
+    - name: ${BUCKET_NAME}
+      description: ${BUCKET_DESCRIPTION}
+      inputs:
+        - name: e2e-input
+          description: ${BUCKET_DESCRIPTION}
+          responseBody: ${response_body}
+          responseStatusCode: 202
+      outputs:
+        - name: e2e-output
+          description: ${BUCKET_DESCRIPTION}
+          destination: https://example.invalid/operator-e2e
+          disabled: true
+          internal: false
 EOF
+}
+
+production_api() {
+  curl --fail --show-error --silent --config "${RUN_DIR}/production-curl.conf" "$@"
+}
+
+exercise_reconcile() {
+  if [[ "${PRODUCTION_MODE}" == "true" ]]; then
+    log "creating production routing resources owned by run ${RUN_ID}"
+  else
+    log "creating a CR with isolated, intentionally invalid credentials"
+  fi
+  apply_forward operator-e2e-v1
 
   for _ in $(seq 1 90); do
     if kubectl -n "${NAMESPACE}" get deployment/e2e-forward-whr-deployment >/dev/null 2>&1; then
@@ -179,10 +227,74 @@ EOF
       .name == "SECRET" and .valueFrom.secretKeyRef.name == "e2e-credentials")
   ' "${ARTIFACT_DIR}/reconciled-deployment.json" >/dev/null || fail "reconciled Deployment is invalid"
 
-  kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o json \
-    >"${ARTIFACT_DIR}/reconciled-forward.json"
-  jq -e '.status.routingStatus == "Failed"' "${ARTIFACT_DIR}/reconciled-forward.json" >/dev/null || \
-    fail "the CR did not report the expected isolated API failure"
+  if [[ "${PRODUCTION_MODE}" == "true" ]]; then
+    exercise_production_reconcile
+  else
+    kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o json \
+      >"${ARTIFACT_DIR}/reconciled-forward.json"
+    jq -e '.status.routingStatus == "Failed"' "${ARTIFACT_DIR}/reconciled-forward.json" >/dev/null || \
+      fail "the CR did not report the expected isolated API failure"
+  fi
+}
+
+exercise_production_reconcile() {
+  local bucket_id input_id output_id
+  for _ in $(seq 1 120); do
+    kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o json \
+      >"${ARTIFACT_DIR}/reconciled-forward.json"
+    production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/production-buckets.json"
+    if jq -e --arg name "${BUCKET_NAME}" --arg description "${BUCKET_DESCRIPTION}" '
+      any(.[]; .name == $name and .description == $description and
+        any(.inputs[]?; .name == "e2e-input" and .body == "operator-e2e-v1" and .status_code == 202) and
+        any(.outputs[]?; .name == "e2e-output" and .disabled == true and .destination == "https://example.invalid/operator-e2e"))
+    ' "${RUN_DIR}/production-buckets.json" >/dev/null &&
+      jq -e '.status.routingStatus == "Configured"' "${ARTIFACT_DIR}/reconciled-forward.json" >/dev/null; then
+      break
+    fi
+    sleep 2
+  done
+
+  bucket_id="$(jq -r --arg name "${BUCKET_NAME}" --arg description "${BUCKET_DESCRIPTION}" \
+    '.[] | select(.name == $name and .description == $description) | .id' "${RUN_DIR}/production-buckets.json")"
+  input_id="$(jq -r --arg name "${BUCKET_NAME}" \
+    '.[] | select(.name == $name) | .inputs[] | select(.name == "e2e-input") | .id' "${RUN_DIR}/production-buckets.json")"
+  output_id="$(jq -r --arg name "${BUCKET_NAME}" \
+    '.[] | select(.name == $name) | .outputs[] | select(.name == "e2e-output") | .id' "${RUN_DIR}/production-buckets.json")"
+  [[ -n "${bucket_id}" && -n "${input_id}" && -n "${output_id}" ]] || fail "production resources did not converge"
+
+  log "updating the CR and checking idempotent resource identities"
+  apply_forward operator-e2e-v2
+  for _ in $(seq 1 90); do
+    production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/production-buckets.json"
+    if jq -e --arg name "${BUCKET_NAME}" --arg bucket "${bucket_id}" \
+      --arg input "${input_id}" --arg output "${output_id}" '
+      any(.[]; .name == $name and .id == $bucket and
+        any(.inputs[]?; .id == $input and .body == "operator-e2e-v2") and
+        any(.outputs[]?; .id == $output))
+    ' "${RUN_DIR}/production-buckets.json" >/dev/null; then
+      log "production reconciliation passed"
+      return
+    fi
+    sleep 2
+  done
+  fail "production resources did not update idempotently"
+}
+
+cleanup_production_resources() {
+  local bucket_count bucket_id
+  [[ "${PRODUCTION_MODE}" == "true" ]] || return 0
+  [[ -s "${RUN_DIR}/production-curl.conf" ]] || return 0
+  production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/cleanup-buckets.json" || return 1
+  bucket_count="$(jq --arg name "${BUCKET_NAME}" --arg description "${BUCKET_DESCRIPTION}" \
+    '[.[] | select(.name == $name and .description == $description)] | length' "${RUN_DIR}/cleanup-buckets.json")"
+  [[ "${bucket_count}" == "0" ]] && return 0
+  [[ "${bucket_count}" == "1" ]] || fail "refusing to delete ambiguous production resources"
+  bucket_id="$(jq -r --arg name "${BUCKET_NAME}" --arg description "${BUCKET_DESCRIPTION}" \
+    '.[] | select(.name == $name and .description == $description) | .id' "${RUN_DIR}/cleanup-buckets.json")"
+  [[ -n "${bucket_id}" ]] || return 1
+  production_api --request DELETE \
+    "https://my.webhookrelay.com/v1/buckets/${bucket_id}?force=true" >/dev/null
+  log "deleted production bucket owned by run ${RUN_ID}"
 }
 
 collect_diagnostics() {
@@ -202,6 +314,10 @@ cleanup() {
   if ((TEST_STATUS != 0)); then
     collect_diagnostics
     log "failure diagnostics retained in ${ARTIFACT_DIR}"
+  fi
+  if ! cleanup_production_resources; then
+    log "ERROR: failed to clean up production resources owned by run ${RUN_ID}"
+    TEST_STATUS=1
   fi
   if [[ -s "${K3S_PID_FILE}" ]]; then
     pid="$(<"${K3S_PID_FILE}")"
