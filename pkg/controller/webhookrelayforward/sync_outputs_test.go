@@ -22,6 +22,7 @@ const (
 	testBucketID        = "bucket"
 	testInputName       = "input"
 	testOutputName      = "output"
+	testOutputID        = "output-id"
 	testDestination     = "https://example.com/webhooks"
 	testRequestFunction = "request-function"
 )
@@ -114,6 +115,46 @@ func TestOutputSpecToOutputRequiresInternalReplay(t *testing.T) {
 	}, &webhookrelay.Bucket{ID: testBucketID})
 
 	require.ErrorContains(t, err, "requires internal")
+}
+
+func TestDesiredOutputsRejectsReplayForSynchronousResponseByName(t *testing.T) {
+	internal := true
+	_, err := desiredOutputs(&forwardv1.BucketSpec{
+		Inputs: []forwardv1.InputSpec{{Name: testInputName, ResponseFromOutput: testOutputName}},
+		Outputs: []forwardv1.OutputSpec{{
+			Name: testOutputName, Internal: &internal,
+			ReplayMissing: &forwardv1.ReplayMissingSpec{Enabled: true},
+		}},
+	}, &webhookrelay.Bucket{ID: testBucketID})
+
+	require.ErrorContains(t, err, "uses it for synchronous responses")
+}
+
+func TestDesiredOutputsRejectsReplayForSynchronousResponseByID(t *testing.T) {
+	internal := true
+	_, err := desiredOutputs(&forwardv1.BucketSpec{
+		Inputs: []forwardv1.InputSpec{{Name: testInputName, ResponseFromOutput: testOutputID}},
+		Outputs: []forwardv1.OutputSpec{{
+			Name: testOutputName, Internal: &internal,
+			ReplayMissing: &forwardv1.ReplayMissingSpec{Enabled: true},
+		}},
+	}, &webhookrelay.Bucket{ID: testBucketID, Outputs: []*webhookrelay.Output{{ID: testOutputID, Name: testOutputName}}})
+
+	require.ErrorContains(t, err, "uses it for synchronous responses")
+}
+
+func TestDesiredOutputsAllowsReplayForUnrelatedOutput(t *testing.T) {
+	internal := true
+	outputs, err := desiredOutputs(&forwardv1.BucketSpec{
+		Inputs: []forwardv1.InputSpec{{Name: testInputName, ResponseFromOutput: "response-output"}},
+		Outputs: []forwardv1.OutputSpec{{
+			Name: testOutputName, Internal: &internal,
+			ReplayMissing: &forwardv1.ReplayMissingSpec{Enabled: true},
+		}},
+	}, &webhookrelay.Bucket{ID: testBucketID})
+
+	require.NoError(t, err)
+	require.Len(t, outputs, 1)
 }
 
 func TestHeadersEqualDetectsAddedAndRemovedHeaders(t *testing.T) {

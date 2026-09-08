@@ -41,6 +41,7 @@ func (r *ReconcileWebhookRelayForward) ensureBucketOutputs(logger logr.Logger, b
 
 	var (
 		err     error
+		syncErr error
 		created *webhookrelay.Output
 		updated *webhookrelay.Output
 	)
@@ -53,6 +54,7 @@ func (r *ReconcileWebhookRelayForward) ensureBucketOutputs(logger logr.Logger, b
 		created, err = r.apiClient.client.CreateOutput(diff.create[idx])
 		if err != nil {
 			logger.Error(err, "failed to create output")
+			syncErr = appendOutputSyncError(syncErr, "create", diff.create[idx], err)
 			continue
 		}
 		// updating cache
@@ -66,9 +68,10 @@ func (r *ReconcileWebhookRelayForward) ensureBucketOutputs(logger logr.Logger, b
 		)
 		updated, err = r.apiClient.client.UpdateOutput(diff.update[idx])
 		if err != nil {
-			logger.Error(err, "failed to update input",
-				"input_id", diff.update[idx].ID,
+			logger.Error(err, "failed to update output",
+				"output_id", diff.update[idx].ID,
 			)
+			syncErr = appendOutputSyncError(syncErr, "update", diff.update[idx], err)
 			continue
 		}
 		r.apiClient.bucketsCache.AddOutput(updated)
@@ -85,12 +88,21 @@ func (r *ReconcileWebhookRelayForward) ensureBucketOutputs(logger logr.Logger, b
 		})
 		if err != nil {
 			logger.Error(err, "failed to delete output",
-				"output_id", diff.update[idx].ID,
+				"output_id", diff.delete[idx].ID,
 			)
+			syncErr = appendOutputSyncError(syncErr, "delete", diff.delete[idx], err)
 		}
 	}
 
-	return nil
+	return syncErr
+}
+
+func appendOutputSyncError(current error, operation string, output *webhookrelay.Output, err error) error {
+	next := fmt.Errorf("failed to %s output %q: %w", operation, output.Name, err)
+	if current == nil {
+		return next
+	}
+	return fmt.Errorf("%v; %w", current, next)
 }
 
 type outputsDiff struct {
@@ -143,6 +155,9 @@ func desiredOutputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucke
 	var desired []*webhookrelay.Output
 
 	for i := range bucketSpec.Outputs {
+		if err := validateReplayResponseConflict(bucketSpec, &bucketSpec.Outputs[i], bucket); err != nil {
+			return nil, err
+		}
 		output, err := outputSpecToOutput(&bucketSpec.Outputs[i], bucket)
 		if err != nil {
 			return nil, fmt.Errorf("invalid configuration for output %q: %w", bucketSpec.Outputs[i].Name, err)
@@ -151,6 +166,32 @@ func desiredOutputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucke
 	}
 
 	return desired, nil
+}
+
+func validateReplayResponseConflict(bucketSpec *forwardv1.BucketSpec, outputSpec *forwardv1.OutputSpec, bucket *webhookrelay.Bucket) error {
+	if outputSpec.ReplayMissing == nil || !outputSpec.ReplayMissing.Enabled {
+		return nil
+	}
+	outputID := ""
+	if output, ok := getOutputFromBucket(outputSpec.Name, bucket); ok {
+		outputID = output.ID
+	}
+	for i := range bucketSpec.Inputs {
+		responseOutput := bucketSpec.Inputs[i].ResponseFromOutput
+		if responseOutput == webhookrelay.AnyResponseFromOutput || responseOutput == outputSpec.Name || (outputID != "" && responseOutput == outputID) {
+			return fmt.Errorf("output %q enables replayMissing but input %q uses it for synchronous responses", outputSpec.Name, bucketSpec.Inputs[i].Name)
+		}
+	}
+	return nil
+}
+
+func getOutputFromBucket(name string, bucket *webhookrelay.Bucket) (*webhookrelay.Output, bool) {
+	for _, output := range bucket.Outputs {
+		if output.Name == name {
+			return output, true
+		}
+	}
+	return nil, false
 }
 
 func outputSpecToOutput(spec *forwardv1.OutputSpec, bucket *webhookrelay.Bucket) (*webhookrelay.Output, error) {
