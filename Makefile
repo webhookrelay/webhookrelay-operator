@@ -39,6 +39,10 @@ test:
 	go install github.com/mfridman/tparse@v0.9.0
 	go test -json -v `go list ./... | egrep -v /tests` -cover | tparse -all -smallscreen
 
+.PHONY: e2e
+e2e:
+	./.test/e2e-k3s.sh
+
 ## Start local Webhook Relay operator
 local-run:
 	OPERATOR_NAME=webhookrelay-operator $(OPERATOR_SDK) run local --operator-flags="--zap-devel"

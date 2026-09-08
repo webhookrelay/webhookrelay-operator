@@ -60,6 +60,8 @@ anaconda-mode/
 *.dylib
 # Test binary, build with 'go test -c'
 *.test
+!.test/
+!.test/*.sh
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 ### Vim ###
@@ -77,3 +79,5 @@ tags
 .history
 # End of https://www.gitignore.io/api/go,vim,emacs,visualstudiocode
 build/golangci-lint
+.test/.runs/
+.test/artifacts/
