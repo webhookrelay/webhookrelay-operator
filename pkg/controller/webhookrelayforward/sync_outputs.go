@@ -1,8 +1,11 @@
 package webhookrelayforward
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -30,7 +33,10 @@ func (r *ReconcileWebhookRelayForward) ensureBucketOutputs(logger logr.Logger, b
 	// Create a list of desired outputs and then diff existing
 	// ones against them to build a list of what outputs
 	// we should create, update and which ones to delete
-	desired := desiredOutputs(bucketSpec, bucket)
+	desired, conversionErr := desiredOutputs(bucketSpec, bucket)
+	if conversionErr != nil {
+		return conversionErr
+	}
 	diff := getOutputsDiff(bucket.Outputs, desired)
 
 	var (
@@ -133,17 +139,24 @@ func getOutputsDiff(current, desired []*webhookrelay.Output) *outputsDiff {
 	return diff
 }
 
-func desiredOutputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucket) []*webhookrelay.Output {
+func desiredOutputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucket) ([]*webhookrelay.Output, error) {
 	var desired []*webhookrelay.Output
 
 	for i := range bucketSpec.Outputs {
-		desired = append(desired, outputSpecToOutput(&bucketSpec.Outputs[i], bucket))
+		output, err := outputSpecToOutput(&bucketSpec.Outputs[i], bucket)
+		if err != nil {
+			return nil, fmt.Errorf("invalid configuration for output %q: %w", bucketSpec.Outputs[i].Name, err)
+		}
+		desired = append(desired, output)
 	}
 
-	return desired
+	return desired, nil
 }
 
-func outputSpecToOutput(spec *forwardv1.OutputSpec, bucket *webhookrelay.Bucket) *webhookrelay.Output {
+func outputSpecToOutput(spec *forwardv1.OutputSpec, bucket *webhookrelay.Bucket) (*webhookrelay.Output, error) {
+	if err := validateOutputSpec(spec); err != nil {
+		return nil, err
+	}
 	header := make(map[string][]string)
 
 	if spec.OverrideHeaders != nil {
@@ -153,28 +166,64 @@ func outputSpecToOutput(spec *forwardv1.OutputSpec, bucket *webhookrelay.Bucket)
 	}
 
 	output := &webhookrelay.Output{
-		Name:        spec.Name,
-		BucketID:    bucket.ID,
-		FunctionID:  spec.FunctionID,
-		Headers:     header,
-		Destination: spec.Destination,
-		Timeout:     spec.Timeout,
-		Description: spec.Description,
+		Name:               spec.Name,
+		BucketID:           bucket.ID,
+		FunctionID:         spec.EffectiveFunctionID(),
+		ResponseFunctionID: spec.ResponseFunctionID,
+		Headers:            header,
+		Destination:        spec.Destination,
+		Timeout:            spec.Timeout,
+		Description:        spec.Description,
+	}
+	applyScalarOutputOptions(spec, output)
+	if spec.Rules != nil && len(spec.Rules.Raw) > 0 {
+		if err := json.Unmarshal(spec.Rules.Raw, &output.Rules); err != nil {
+			return nil, fmt.Errorf("invalid rules: %w", err)
+		}
+	}
+	var err error
+	output.Durability, err = durabilityFromSpec(spec.Durability)
+	if err != nil {
+		return nil, fmt.Errorf("invalid durability: %w", err)
+	}
+	output.Throttle, err = throttleFromSpec(spec.Throttle)
+	if err != nil {
+		return nil, fmt.Errorf("invalid throttle: %w", err)
+	}
+	output.ReplayMissing, err = replayMissingFromSpec(spec.ReplayMissing)
+	if err != nil {
+		return nil, fmt.Errorf("invalid replayMissing: %w", err)
 	}
 
+	return output, nil
+}
+
+func validateOutputSpec(spec *forwardv1.OutputSpec) error {
+	if spec.FunctionID != "" && spec.LegacyFunctionID != "" && spec.FunctionID != spec.LegacyFunctionID {
+		return fmt.Errorf("functionId conflicts with deprecated function_id")
+	}
+	if spec.ReplayMissing != nil && spec.ReplayMissing.Enabled && (spec.Internal == nil || !*spec.Internal) {
+		return fmt.Errorf("replayMissing requires internal: true")
+	}
+	return nil
+}
+
+func applyScalarOutputOptions(spec *forwardv1.OutputSpec, output *webhookrelay.Output) {
+	if spec.Retries != nil {
+		output.Retries = *spec.Retries
+	}
+	if spec.TLSVerification != nil {
+		output.TLSVerification = *spec.TLSVerification
+	}
 	if spec.LockPath != nil {
 		output.LockPath = *spec.LockPath
 	}
-
 	if spec.Disabled != nil {
 		output.Disabled = *spec.Disabled
 	}
-
 	if spec.Internal != nil {
 		output.Internal = *spec.Internal
 	}
-
-	return output
 }
 
 func outputsEqual(current, desired *webhookrelay.Output) bool {
@@ -182,6 +231,9 @@ func outputsEqual(current, desired *webhookrelay.Output) bool {
 		return false
 	}
 	if current.FunctionID != desired.FunctionID {
+		return false
+	}
+	if current.ResponseFunctionID != desired.ResponseFunctionID {
 		return false
 	}
 	if current.Destination != desired.Destination {
@@ -207,12 +259,104 @@ func outputsEqual(current, desired *webhookrelay.Output) bool {
 	if current.Timeout != desired.Timeout {
 		return false
 	}
+	if current.Retries != desired.Retries {
+		return false
+	}
+	if current.TLSVerification != desired.TLSVerification {
+		return false
+	}
+	if !reflect.DeepEqual(current.Rules, desired.Rules) {
+		return false
+	}
+	if !reflect.DeepEqual(current.Durability, desired.Durability) {
+		return false
+	}
+	if !reflect.DeepEqual(current.Throttle, desired.Throttle) {
+		return false
+	}
+	if !reflect.DeepEqual(current.ReplayMissing, desired.ReplayMissing) {
+		return false
+	}
 
 	if current.Description != desired.Description {
 		return false
 	}
 
 	return true
+}
+
+func durabilityFromSpec(spec *forwardv1.DurabilitySpec) (*webhookrelay.DurabilityConfig, error) {
+	if spec == nil {
+		return nil, nil
+	}
+	config := &webhookrelay.DurabilityConfig{Enabled: spec.Enabled, Schedule: spec.Schedule}
+	for _, delay := range spec.CustomDelays {
+		parsed, err := parseDuration(delay)
+		if err != nil {
+			return nil, fmt.Errorf("custom delay: %w", err)
+		}
+		config.CustomDelays = append(config.CustomDelays, parsed)
+	}
+	if spec.Deadline != "" {
+		parsed, err := parseDuration(spec.Deadline)
+		if err != nil {
+			return nil, fmt.Errorf("deadline: %w", err)
+		}
+		config.Deadline = parsed
+	}
+	if spec.HandoffAfter != "" {
+		parsed, err := parseDuration(spec.HandoffAfter)
+		if err != nil {
+			return nil, fmt.Errorf("handoffAfter: %w", err)
+		}
+		config.HandoffAfter = parsed
+	}
+	return config, nil
+}
+
+func throttleFromSpec(spec *forwardv1.ThrottleSpec) (*webhookrelay.ThrottleConfig, error) {
+	if spec == nil {
+		return nil, nil
+	}
+	config := &webhookrelay.ThrottleConfig{
+		Enabled:       spec.Enabled,
+		Mode:          spec.Mode,
+		Rate:          spec.Rate,
+		Interval:      spec.Interval,
+		MaxConcurrent: spec.MaxConcurrent,
+		MaxQueueDepth: spec.MaxQueueDepth,
+	}
+	if spec.Deadline != "" {
+		parsed, err := parseDuration(spec.Deadline)
+		if err != nil {
+			return nil, fmt.Errorf("deadline: %w", err)
+		}
+		config.Deadline = parsed
+	}
+	return config, nil
+}
+
+func replayMissingFromSpec(spec *forwardv1.ReplayMissingSpec) (*webhookrelay.ReplayMissingConfig, error) {
+	if spec == nil {
+		return nil, nil
+	}
+	config := &webhookrelay.ReplayMissingConfig{Enabled: spec.Enabled, Limit: spec.Limit}
+	if spec.Lookback != "" {
+		parsed, err := parseDuration(spec.Lookback)
+		if err != nil {
+			return nil, fmt.Errorf("lookback: %w", err)
+		}
+		config.Lookback = parsed
+	}
+	return config, nil
+}
+
+func parseDuration(value forwardv1.Duration) (time.Duration, error) {
+	duration, err := time.ParseDuration(string(value))
+	if err != nil {
+		return 0, fmt.Errorf("%q is not a valid duration: %w", value, err)
+	}
+	return duration, nil
 }
 
 func headersEqual(current, desired map[string][]string) bool {

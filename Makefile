@@ -7,6 +7,7 @@ OPERATOR_IMAGE ?= webhookrelay/webhookrelay-operator:test
 GO_ENV = GOOS=linux CGO_ENABLED=0
 GO_BUILD_CMD = go build
 SDK_VERSION = v0.18.1
+CONTROLLER_GEN_VERSION = v0.19.0
 MACHINE = $(shell uname -m)
 BUILD_DIR = "build"
 YQ = $(BUILD_DIR)/yq
@@ -30,9 +31,12 @@ ko-build:
 
 # Generate APIs, CRD specs and CRD clientset.
 go-gen:
-	$(OPERATOR_SDK) generate k8s
-	$(OPERATOR_SDK) generate crds
+	go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION) object paths=./pkg/apis/forward/v1
+	mkdir -p build/generated-crds
+	go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION) crd:crdVersions=v1 paths=./pkg/apis/forward/v1 output:crd:artifacts:config=build/generated-crds
+	cp build/generated-crds/forward.webhookrelay.com_webhookrelayforwards.yaml deploy/crds/forward.webhookrelay.com_webhookrelayforwards_crd.yaml
 	cp deploy/crds/forward.webhookrelay.com_webhookrelayforwards_crd.yaml charts/webhookrelay-operator/crds/crd.yaml
+	cp deploy/crds/forward.webhookrelay.com_webhookrelayforwards_crd.yaml deploy/olm-catalog/webhookrelay-operator/manifests/forward.webhookrelay.com_webhookrelayforwards_crd.yaml
 
 # Run tests
 test:

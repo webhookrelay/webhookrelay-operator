@@ -254,7 +254,7 @@ apply_production_forward() {
   local input_function_yaml=""
   local output_function_yaml=""
   [[ -z "${input_function_id}" ]] || input_function_yaml="          functionId: ${input_function_id}"
-  [[ -z "${output_function_id}" ]] || output_function_yaml="          function_id: ${output_function_id}"
+  [[ -z "${output_function_id}" ]] || output_function_yaml="          functionId: ${output_function_id}"
 
   umask 077
   printf 'key=%s\nsecret=%s\n' "${WHR_E2E_RELAY_KEY}" "${WHR_E2E_RELAY_SECRET}" >"${credentials_file}"
@@ -276,6 +276,9 @@ spec:
         - name: e2e-input
           description: ${BUCKET_DESCRIPTION}
           responseFromOutput: e2e-output
+          stripPathPrefix: false
+          tlsVersion: "1.2"
+          legacyTLS: false
 ${input_function_yaml}
       outputs:
         - name: e2e-output
@@ -285,8 +288,21 @@ ${input_function_yaml}
           internal: true
           lockPath: true
           timeout: 10
+          retries: 2
+          tlsVerification: true
           overrideHeaders:
             X-WHR-E2E-Override: ${override_value}
+          durability:
+            enabled: true
+            schedule: long
+            deadline: 720h
+            handoffAfter: 15m
+          throttle:
+            enabled: false
+          replayMissing:
+            enabled: true
+            lookback: 30m
+            limit: 250
 ${output_function_yaml}
 EOF
   PRODUCTION_RESOURCES_STARTED=true
@@ -345,9 +361,16 @@ exercise_production_reconcile() {
     production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/production-buckets.json"
     if jq -e --arg name "${BUCKET_NAME}" --arg description "${BUCKET_DESCRIPTION}" '
       any(.[]; .name == $name and .description == $description and
-        any(.inputs[]?; .name == "e2e-input" and .response_from_output != "") and
+        any(.inputs[]?; .name == "e2e-input" and .response_from_output != "" and
+          .strip_path_prefix == false and .tls_version == "1.2" and .legacy_tls == false) and
         any(.outputs[]?; .name == "e2e-output" and .disabled == false and .internal == true and
           .lock_path == true and .timeout == 10 and .destination == "http://e2e-receiver:8080/hooks/base" and
+          .retries == 2 and .tls_verification == true and
+          .durability.enabled == true and .durability.schedule == "long" and
+          .durability.deadline == 2592000000000000 and .durability.handoff_after == 900000000000 and
+          .throttle.enabled == false and
+          .replay_missing.enabled == true and .replay_missing.lookback == 1800000000000 and
+          .replay_missing.limit == 250 and
           any(.headers | to_entries[]?; (.key | ascii_downcase) == "x-whr-e2e-override" and .value[0] == "baseline")))
     ' "${RUN_DIR}/production-buckets.json" >/dev/null &&
       jq -e '.status.routingStatus == "Configured"' "${ARTIFACT_DIR}/reconciled-forward.json" >/dev/null; then
@@ -403,6 +426,9 @@ wait_for_production_update() {
       any(.[]; .name == $name and .id == $bucket and
         any(.inputs[]?; .id == $input and .function_id == $input_function) and
         any(.outputs[]?; .id == $output and .function_id == $output_function and
+          .retries == 2 and .tls_verification == true and
+          .durability.enabled == true and .throttle.enabled == false and
+          .replay_missing.enabled == true and .replay_missing.limit == 250 and
           any(.headers | to_entries[]?; (.key | ascii_downcase) == "x-whr-e2e-override" and .value[0] == $override)))
     ' "${RUN_DIR}/production-buckets.json" >/dev/null; then
       return
