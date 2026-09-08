@@ -13,21 +13,22 @@ permissions:
 
 jobs:
   production-e2e:
-    name: Production API (k3s)
+    name: Production Live Delivery (k3s)
     if: inputs.confirmation == 'production'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     environment: production
     env:
       WHR_OPERATOR_E2E_PRODUCTION: "true"
       WHR_OPERATOR_E2E_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
       WHR_E2E_RELAY_KEY: ${{ secrets.WHR_E2E_RELAY_KEY }}
       WHR_E2E_RELAY_SECRET: ${{ secrets.WHR_E2E_RELAY_SECRET }}
+      WHR_E2E_FUNCTION_ID: ${{ vars.WHR_E2E_FUNCTION_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Validate production reconciliation
+      - name: Validate production reconciliation and live delivery
         run: make e2e
 
       - name: Upload failure diagnostics

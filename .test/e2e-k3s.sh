@@ -21,7 +21,10 @@ K3S_DATA_DIR="/var/lib/webhookrelay-operator-e2e-${RUN_ID}"
 K3S_CLIENT_DATA_DIR="${RUN_DIR}/client-data"
 NAMESPACE="webhookrelay-operator-e2e"
 IMAGE="webhookrelay-operator-e2e:${RUN_ID}"
+RECEIVER_IMAGE="webhookrelay-operator-e2e-receiver:${RUN_ID}"
 PRODUCTION_MODE="${WHR_OPERATOR_E2E_PRODUCTION:-false}"
+AGENT_IMAGE="${WHR_E2E_AGENT_IMAGE:-webhookrelay/webhookrelayd-ubi8:latest}"
+FUNCTION_ID="${WHR_E2E_FUNCTION_ID:-}"
 BUCKET_NAME="operator-e2e-${RUN_ID}"
 BUCKET_DESCRIPTION="Webhook Relay operator production e2e run ${RUN_ID}"
 TEST_STATUS=0
@@ -55,6 +58,7 @@ preflight() {
   if [[ "${PRODUCTION_MODE}" == "true" ]]; then
     [[ -n "${WHR_E2E_RELAY_KEY:-}" ]] || fail "WHR_E2E_RELAY_KEY is required in production mode"
     [[ -n "${WHR_E2E_RELAY_SECRET:-}" ]] || fail "WHR_E2E_RELAY_SECRET is required in production mode"
+    [[ -n "${FUNCTION_ID}" ]] || fail "WHR_E2E_FUNCTION_ID is required in production mode"
     umask 077
     printf 'user = "%s:%s"\n' "${WHR_E2E_RELAY_KEY}" "${WHR_E2E_RELAY_SECRET}" \
       >"${RUN_DIR}/production-curl.conf"
@@ -131,13 +135,23 @@ helm() {
   env KUBECONFIG="${KUBECONFIG}" "${HELM_BIN}" "$@"
 }
 
-build_and_import_image() {
+build_and_import_images() {
   local archive="${RUN_DIR}/operator-image.tar"
   log "building operator image ${IMAGE}"
   docker build --tag "${IMAGE}" --file "${REPO_ROOT}/build/Dockerfile" "${REPO_ROOT}"
   docker save --output "${archive}" "${IMAGE}"
   sudo env K3S_DATA_DIR="${K3S_DATA_DIR}" "${K3S_BIN}" ctr \
     --address /run/k3s/containerd/containerd.sock --namespace k8s.io images import "${archive}"
+
+  if [[ "${PRODUCTION_MODE}" == "true" ]]; then
+    archive="${RUN_DIR}/receiver-image.tar"
+    log "building delivery receiver image ${RECEIVER_IMAGE}"
+    docker build --tag "${RECEIVER_IMAGE}" \
+      --file "${REPO_ROOT}/.test/receiver/Dockerfile" "${REPO_ROOT}"
+    docker save --output "${archive}" "${RECEIVER_IMAGE}"
+    sudo env K3S_DATA_DIR="${K3S_DATA_DIR}" "${K3S_BIN}" ctr \
+      --address /run/k3s/containerd/containerd.sock --namespace k8s.io images import "${archive}"
+  fi
 }
 
 install_operator() {
@@ -159,17 +173,57 @@ install_operator() {
     ' >/dev/null || fail "operator Deployment wiring is invalid"
 }
 
-apply_forward() {
+install_receiver() {
+  [[ "${PRODUCTION_MODE}" == "true" ]] || return 0
+  kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: e2e-receiver
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: e2e-receiver
+  template:
+    metadata:
+      labels:
+        app: e2e-receiver
+    spec:
+      containers:
+        - name: receiver
+          image: ${RECEIVER_IMAGE}
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: e2e-receiver
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: e2e-receiver
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+EOF
+  kubectl -n "${NAMESPACE}" rollout status deployment/e2e-receiver --timeout=120s
+}
+
+apply_isolated_forward() {
   local response_body="$1"
   local credentials_file="${RUN_DIR}/credentials.env"
-  local relay_key="e2e-invalid-key"
-  local relay_secret="e2e-invalid-secret"
-  if [[ "${PRODUCTION_MODE}" == "true" ]]; then
-    relay_key="${WHR_E2E_RELAY_KEY}"
-    relay_secret="${WHR_E2E_RELAY_SECRET}"
-  fi
   umask 077
-  printf 'key=%s\nsecret=%s\n' "${relay_key}" "${relay_secret}" >"${credentials_file}"
+  printf 'key=e2e-invalid-key\nsecret=e2e-invalid-secret\n' >"${credentials_file}"
   kubectl -n "${NAMESPACE}" create secret generic e2e-credentials \
     --from-env-file="${credentials_file}" --dry-run=client -o yaml | kubectl apply -f -
   kubectl apply -f - <<EOF
@@ -198,6 +252,51 @@ spec:
 EOF
 }
 
+apply_production_forward() {
+  local input_function_id="$1"
+  local output_function_id="$2"
+  local override_value="$3"
+  local credentials_file="${RUN_DIR}/credentials.env"
+  local input_function_yaml=""
+  local output_function_yaml=""
+  [[ -z "${input_function_id}" ]] || input_function_yaml="          functionId: ${input_function_id}"
+  [[ -z "${output_function_id}" ]] || output_function_yaml="          function_id: ${output_function_id}"
+
+  umask 077
+  printf 'key=%s\nsecret=%s\n' "${WHR_E2E_RELAY_KEY}" "${WHR_E2E_RELAY_SECRET}" >"${credentials_file}"
+  kubectl -n "${NAMESPACE}" create secret generic e2e-credentials \
+    --from-env-file="${credentials_file}" --dry-run=client -o yaml | kubectl apply -f -
+  kubectl apply -f - <<EOF
+apiVersion: forward.webhookrelay.com/v1
+kind: WebhookRelayForward
+metadata:
+  name: e2e-forward
+  namespace: ${NAMESPACE}
+spec:
+  secretRefName: e2e-credentials
+  image: ${AGENT_IMAGE}
+  buckets:
+    - name: ${BUCKET_NAME}
+      description: ${BUCKET_DESCRIPTION}
+      inputs:
+        - name: e2e-input
+          description: ${BUCKET_DESCRIPTION}
+          responseFromOutput: e2e-output
+${input_function_yaml}
+      outputs:
+        - name: e2e-output
+          description: ${BUCKET_DESCRIPTION}
+          destination: http://e2e-receiver:8080/hooks/base
+          disabled: false
+          internal: true
+          lockPath: true
+          timeout: 10
+          overrideHeaders:
+            X-WHR-E2E-Override: ${override_value}
+${output_function_yaml}
+EOF
+}
+
 production_api() {
   curl --fail --show-error --silent --config "${RUN_DIR}/production-curl.conf" "$@"
 }
@@ -208,7 +307,11 @@ exercise_reconcile() {
   else
     log "creating a CR with isolated, intentionally invalid credentials"
   fi
-  apply_forward operator-e2e-v1
+  if [[ "${PRODUCTION_MODE}" == "true" ]]; then
+    apply_production_forward "" "" baseline
+  else
+    apply_isolated_forward operator-e2e-v1
+  fi
 
   for _ in $(seq 1 90); do
     if kubectl -n "${NAMESPACE}" get deployment/e2e-forward-whr-deployment >/dev/null 2>&1; then
@@ -216,11 +319,13 @@ exercise_reconcile() {
     fi
     sleep 2
   done
+  local expected_agent_image="busybox:1.36.1"
+  [[ "${PRODUCTION_MODE}" != "true" ]] || expected_agent_image="${AGENT_IMAGE}"
   kubectl -n "${NAMESPACE}" get deployment/e2e-forward-whr-deployment -o json \
     >"${ARTIFACT_DIR}/reconciled-deployment.json"
-  jq -e '
+  jq -e --arg image "${expected_agent_image}" '
     .metadata.ownerReferences[0].kind == "WebhookRelayForward" and
-    .spec.template.spec.containers[0].image == "busybox:1.36.1" and
+    .spec.template.spec.containers[0].image == $image and
     any(.spec.template.spec.containers[0].env[];
       .name == "KEY" and .valueFrom.secretKeyRef.name == "e2e-credentials") and
     any(.spec.template.spec.containers[0].env[];
@@ -238,15 +343,17 @@ exercise_reconcile() {
 }
 
 exercise_production_reconcile() {
-  local bucket_id input_id output_id
+  local bucket_id input_id output_id public_endpoint
   for _ in $(seq 1 120); do
     kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o json \
       >"${ARTIFACT_DIR}/reconciled-forward.json"
     production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/production-buckets.json"
     if jq -e --arg name "${BUCKET_NAME}" --arg description "${BUCKET_DESCRIPTION}" '
       any(.[]; .name == $name and .description == $description and
-        any(.inputs[]?; .name == "e2e-input" and .body == "operator-e2e-v1" and .status_code == 202) and
-        any(.outputs[]?; .name == "e2e-output" and .disabled == true and .destination == "https://example.invalid/operator-e2e"))
+        any(.inputs[]?; .name == "e2e-input" and .response_from_output != "") and
+        any(.outputs[]?; .name == "e2e-output" and .disabled == false and .internal == true and
+          .lock_path == true and .timeout == 10 and .destination == "http://e2e-receiver:8080/hooks/base" and
+          any(.headers | to_entries[]?; (.key | ascii_downcase) == "x-whr-e2e-override" and .value[0] == "baseline")))
     ' "${RUN_DIR}/production-buckets.json" >/dev/null &&
       jq -e '.status.routingStatus == "Configured"' "${ARTIFACT_DIR}/reconciled-forward.json" >/dev/null; then
       break
@@ -262,22 +369,91 @@ exercise_production_reconcile() {
     '.[] | select(.name == $name) | .outputs[] | select(.name == "e2e-output") | .id' "${RUN_DIR}/production-buckets.json")"
   [[ -n "${bucket_id}" && -n "${input_id}" && -n "${output_id}" ]] || fail "production resources did not converge"
 
-  log "updating the CR and checking idempotent resource identities"
-  apply_forward operator-e2e-v2
+  kubectl -n "${NAMESPACE}" rollout status deployment/e2e-forward-whr-deployment --timeout=180s
+  public_endpoint="$(jq -r '.status.publicEndpoints[0] // empty' "${ARTIFACT_DIR}/reconciled-forward.json")"
+  [[ "${public_endpoint}" == https://* ]] || fail "the CR did not publish a production input endpoint"
+
+  assert_live_delivery "${public_endpoint}" baseline baseline ""
+
+  log "testing input function ID with live delivery"
+  apply_production_forward "${FUNCTION_ID}" "" input-function
+  wait_for_production_update "${bucket_id}" "${input_id}" "${output_id}" "${FUNCTION_ID}" "" input-function
+  assert_live_delivery "${public_endpoint}" input-function input-function applied
+
+  log "testing output function ID with live delivery and stable resource identities"
+  apply_production_forward "" "${FUNCTION_ID}" output-function
+  wait_for_production_update "${bucket_id}" "${input_id}" "${output_id}" "" "${FUNCTION_ID}" output-function
+  assert_live_delivery "${public_endpoint}" output-function output-function applied
+  log "production reconciliation and live delivery passed"
+}
+
+wait_for_production_update() {
+  local bucket_id="$1"
+  local input_id="$2"
+  local output_id="$3"
+  local input_function_id="$4"
+  local output_function_id="$5"
+  local override_value="$6"
   for _ in $(seq 1 90); do
     production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/production-buckets.json"
-    if jq -e --arg name "${BUCKET_NAME}" --arg bucket "${bucket_id}" \
-      --arg input "${input_id}" --arg output "${output_id}" '
+    if jq -e --arg name "${BUCKET_NAME}" --arg bucket "${bucket_id}" --arg input "${input_id}" \
+      --arg output "${output_id}" --arg input_function "${input_function_id}" \
+      --arg output_function "${output_function_id}" --arg override "${override_value}" '
       any(.[]; .name == $name and .id == $bucket and
-        any(.inputs[]?; .id == $input and .body == "operator-e2e-v2") and
-        any(.outputs[]?; .id == $output))
+        any(.inputs[]?; .id == $input and .function_id == $input_function) and
+        any(.outputs[]?; .id == $output and .function_id == $output_function and
+          any(.headers | to_entries[]?; (.key | ascii_downcase) == "x-whr-e2e-override" and .value[0] == $override)))
     ' "${RUN_DIR}/production-buckets.json" >/dev/null; then
-      log "production reconciliation passed"
       return
     fi
     sleep 2
   done
   fail "production resources did not update idempotently"
+}
+
+assert_live_delivery() {
+  local public_endpoint="$1"
+  local case_name="$2"
+  local expected_override="$3"
+  local expected_function_header="$4"
+  local nonce="${RUN_ID}-${case_name}"
+  local response_body_file="${RUN_DIR}/${case_name}-response-body.txt"
+  local response_headers_file="${RUN_DIR}/${case_name}-response-headers.txt"
+  local response_status
+  local receiver_record="${RUN_DIR}/${case_name}-receiver.json"
+
+  response_status="$(curl --show-error --silent \
+    --dump-header "${response_headers_file}" --output "${response_body_file}" \
+    --write-out '%{http_code}' --request POST \
+    --header 'Content-Type: application/json' \
+    --header "X-WHR-E2E-Nonce: ${nonce}" \
+    --data "{\"nonce\":\"${nonce}\",\"case\":\"${case_name}\"}" \
+    "${public_endpoint}/caller-path?source=production-e2e")"
+  [[ "${response_status}" == "201" ]] || fail "${case_name}: caller received HTTP ${response_status}, expected 201"
+  grep -qi '^X-WHR-E2E-Receiver: observed' "${response_headers_file}" || \
+    fail "${case_name}: receiver response header was not propagated"
+  [[ "$(<"${response_body_file}")" == "receiver-response:${nonce}" ]] || \
+    fail "${case_name}: receiver response body was not propagated"
+
+  for _ in $(seq 1 60); do
+    if kubectl -n "${NAMESPACE}" exec deployment/e2e-receiver -- \
+      wget -qO- "http://127.0.0.1:8080/requests/${nonce}" >"${receiver_record}" 2>/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  jq -e --arg nonce "${nonce}" --arg override "${expected_override}" \
+    --arg function_header "${expected_function_header}" '
+      .method == "POST" and .path == "/hooks/base" and .rawQuery == "" and
+      .nonce == $nonce and .overrideHeader == $override and .functionHeader == $function_header and
+      ((.body | fromjson).nonce == $nonce) and
+      (if $function_header == "" then
+        ((.body | fromjson) | has("functionApplied") | not)
+      else
+        ((.body | fromjson).functionApplied == "webhookrelay-operator-live-delivery")
+      end)
+    ' "${receiver_record}" >/dev/null || fail "${case_name}: receiver did not observe the expected request"
+  log "${case_name}: live webhook delivery passed"
 }
 
 cleanup_production_resources() {
@@ -316,6 +492,10 @@ collect_diagnostics() {
     >"${ARTIFACT_DIR}/operator-deployment.txt" 2>&1 || true
   kubectl -n "${NAMESPACE}" logs deployment/webhookrelay-operator --all-containers \
     >"${ARTIFACT_DIR}/operator.log" 2>&1 || true
+  kubectl -n "${NAMESPACE}" logs deployment/e2e-forward-whr-deployment --all-containers \
+    >"${ARTIFACT_DIR}/relay-agent.log" 2>&1 || true
+  kubectl -n "${NAMESPACE}" logs deployment/e2e-receiver --all-containers \
+    >"${ARTIFACT_DIR}/receiver.log" 2>&1 || true
 }
 
 cleanup() {
@@ -355,6 +535,7 @@ trap cleanup EXIT INT TERM
 preflight
 download_tools
 start_k3s
-build_and_import_image
+build_and_import_images
 install_operator
+install_receiver
 exercise_reconcile

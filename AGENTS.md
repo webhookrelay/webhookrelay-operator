@@ -56,10 +56,8 @@ make e2e
   alone are insufficient.
 - GitHub Actions is the only repository CI system. Pull-request workflows from
   outside collaborators require maintainer approval before they run.
-- The production E2E workflow is manual and protected. At present it verifies
-  live routing-resource reconciliation and cleanup, but not webhook delivery.
-  Do not describe it as a delivery test until the live-delivery PR in the plan
-  has landed.
+- The production E2E workflow is manual and protected. It must verify both live
+  routing-resource reconciliation and delivery into the K3s receiver.
 - A complete live-delivery gate must send a uniquely identifiable request to
   the public input and assert that an HTTP receiver inside K3s observed the
   expected method, path, headers, and body. Configuration cases, including
