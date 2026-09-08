@@ -284,6 +284,13 @@ cleanup_production_resources() {
   local bucket_count bucket_id
   [[ "${PRODUCTION_MODE}" == "true" ]] || return 0
   [[ -s "${RUN_DIR}/production-curl.conf" ]] || return 0
+  # Stop reconciliation before deleting remote state. Otherwise the controller's
+  # five-second requeue can recreate the bucket between deletion and k3s teardown.
+  kubectl -n "${NAMESPACE}" scale deployment/webhookrelay-operator --replicas=0 >/dev/null || return 1
+  kubectl -n "${NAMESPACE}" wait --for=delete pod \
+    --selector app.kubernetes.io/name=webhookrelay-operator --timeout=60s >/dev/null || return 1
+  kubectl -n "${NAMESPACE}" delete webhookrelayforward/e2e-forward \
+    --ignore-not-found --wait=true --timeout=60s >/dev/null || return 1
   production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/cleanup-buckets.json" || return 1
   bucket_count="$(jq --arg name "${BUCKET_NAME}" --arg description "${BUCKET_DESCRIPTION}" \
     '[.[] | select(.name == $name and .description == $description)] | length' "${RUN_DIR}/cleanup-buckets.json")"
@@ -294,6 +301,10 @@ cleanup_production_resources() {
   [[ -n "${bucket_id}" ]] || return 1
   production_api --request DELETE \
     "https://my.webhookrelay.com/v1/buckets/${bucket_id}?force=true" >/dev/null
+  production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/cleanup-buckets.json" || return 1
+  jq -e --arg name "${BUCKET_NAME}" --arg description "${BUCKET_DESCRIPTION}" '
+    all(.[]; .name != $name or .description != $description)
+  ' "${RUN_DIR}/cleanup-buckets.json" >/dev/null || return 1
   log "deleted production bucket owned by run ${RUN_ID}"
 }
 
