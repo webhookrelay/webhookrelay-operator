@@ -115,6 +115,11 @@ func inputSpecToInput(spec *forwardv1.InputSpec, bucket *webhookrelay.Bucket) *w
 		PathPrefix:         spec.PathPrefix,
 		Description:        spec.Description,
 	}
+	// The API normalizes an omitted status code to 200. Mirror that default in
+	// desired state so an otherwise converged input does not update forever.
+	if computedInput.StatusCode == 0 {
+		computedInput.StatusCode = 200
+	}
 
 	if spec.CustomDomain != nil {
 		// set, using it
@@ -182,12 +187,8 @@ func inputEqual(current, desired *webhookrelay.Input) bool {
 		return false
 	}
 
-	if len(current.Headers) != len(desired.Headers) {
-		for k := range current.Headers {
-			if !sliceEqual(current.Headers[k], desired.Headers[k]) {
-				return false
-			}
-		}
+	if !headersEqual(current.Headers, desired.Headers) {
+		return false
 	}
 
 	if current.ResponseFromOutput != desired.ResponseFromOutput {

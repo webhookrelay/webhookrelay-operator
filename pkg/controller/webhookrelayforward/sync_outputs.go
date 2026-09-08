@@ -2,6 +2,7 @@ package webhookrelayforward
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 
@@ -187,12 +188,8 @@ func outputsEqual(current, desired *webhookrelay.Output) bool {
 		return false
 	}
 
-	if len(current.Headers) != len(desired.Headers) {
-		for k := range current.Headers {
-			if !sliceEqual(current.Headers[k], desired.Headers[k]) {
-				return false
-			}
-		}
+	if !headersEqual(current.Headers, desired.Headers) {
+		return false
 	}
 
 	if current.Internal != desired.Internal {
@@ -216,4 +213,27 @@ func outputsEqual(current, desired *webhookrelay.Output) bool {
 	}
 
 	return true
+}
+
+func headersEqual(current, desired map[string][]string) bool {
+	currentNormalized := normalizeHeaders(current)
+	desiredNormalized := normalizeHeaders(desired)
+	if len(currentNormalized) != len(desiredNormalized) {
+		return false
+	}
+	for key, desiredValues := range desiredNormalized {
+		currentValues, ok := currentNormalized[key]
+		if !ok || !sliceEqual(currentValues, desiredValues) {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeHeaders(headers map[string][]string) map[string][]string {
+	normalized := make(map[string][]string, len(headers))
+	for key, values := range headers {
+		normalized[strings.ToLower(key)] = values
+	}
+	return normalized
 }

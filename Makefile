@@ -38,6 +38,7 @@ go-gen:
 test:
 	go install github.com/mfridman/tparse@v0.9.0
 	go test -json -v `go list ./... | egrep -v /tests` -cover | tparse -all -smallscreen
+	go test ./.test/receiver
 
 .PHONY: e2e
 e2e:
