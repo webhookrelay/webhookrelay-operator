@@ -12,20 +12,20 @@ workspace:
 
 steps:
 - name: test
-  pull: golang:1.19
-  image: golang
+  pull: default
+  image: golang:1.27.1
   commands:
   - make test
 
 - name: build
   pull: default
-  image: golang:1.19
+  image: golang:1.27.1
   commands:
   - make build
 
 - name: lint-code
   pull: default
-  image: golang:1.19
+  image: golang:1.27.1
   commands:
   - make golangci-lint
   - make lint

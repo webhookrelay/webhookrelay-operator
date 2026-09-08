@@ -4,10 +4,11 @@ import (
 	"reflect"
 	"strings"
 
-	forwardv1 "github.com/webhookrelay/webhookrelay-operator/pkg/apis/forward/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	forwardv1 "github.com/webhookrelay/webhookrelay-operator/pkg/apis/forward/v1"
 )
 
 // checkDeployment - checks whether deployment is equal, otherwise patches it
@@ -161,7 +162,7 @@ func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookR
 		"app": cr.Name,
 	}
 	podLabels := map[string]string{
-		"name": "webhookrelay-forwarder",
+		forwarderLabelKey: forwarderLabelValue,
 	}
 
 	image := cr.Spec.Image
@@ -204,7 +205,7 @@ func (r *ReconcileWebhookRelayForward) newDeploymentForCR(cr *forwardv1.WebhookR
 			Replicas: toInt32(1),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"name": "webhookrelay-forwarder",
+					forwarderLabelKey: forwarderLabelValue,
 				},
 			},
 			Template: podTemplateSpec,
