@@ -172,6 +172,9 @@ func validateReplayResponseConflict(bucketSpec *forwardv1.BucketSpec, outputSpec
 	if outputSpec.ReplayMissing == nil || !outputSpec.ReplayMissing.Enabled {
 		return nil
 	}
+	if bucketSpec.Ephemeral != nil && *bucketSpec.Ephemeral {
+		return fmt.Errorf("output %q enables replayMissing but bucket %q is ephemeral", outputSpec.Name, bucketSpec.Name)
+	}
 	outputID := ""
 	if output, ok := getOutputFromBucket(outputSpec.Name, bucket); ok {
 		outputID = output.ID

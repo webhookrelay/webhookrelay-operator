@@ -49,8 +49,44 @@ spec:
                     BucketSpec defines a bucket that groups one or more inputs (public endpoints) and
                     one ore more outputs (where the webhooks should be routed)
                   properties:
+                    auth:
+                      description: |-
+                        Auth protects every public input in this bucket. Authentication values
+                        must come from a Secret in the WebhookRelayForward namespace.
+                      properties:
+                        secretKeyRef:
+                          description: |-
+                            SecretKeyRef selects the Basic password or authentication token. The
+                            Secret is always read from the WebhookRelayForward namespace.
+                          properties:
+                            key:
+                              type: string
+                            name:
+                              type: string
+                          required:
+                          - key
+                          - name
+                          type: object
+                        type:
+                          description: Type selects no authentication, HTTP Basic
+                            authentication, or token authentication.
+                          enum:
+                          - none
+                          - basic
+                          - token
+                          type: string
+                        username:
+                          description: Username is required for basic authentication.
+                          type: string
+                      required:
+                      - type
+                      type: object
                     description:
                       type: string
+                    ephemeral:
+                      description: Ephemeral disables webhook log persistence for
+                        this bucket.
+                      type: boolean
                     inputs:
                       description: |-
                         Inputs are your public endpoints. Inputs can either be https://my.webhookrelay.com/v1/webhooks/[unique ID]
@@ -121,6 +157,10 @@ spec:
                             type: string
                         type: object
                       type: array
+                    largeWebhooks:
+                      description: LargeWebhooks enables payloads larger than the
+                        standard limit.
+                      type: boolean
                     name:
                       description: |-
                         Name is the name of a bucket that can be reused
@@ -282,6 +322,13 @@ spec:
                         - destination
                         type: object
                       type: array
+                    staticIP:
+                      description: StaticIP routes public output delivery through
+                        a static egress IP.
+                      type: boolean
+                    stream:
+                      description: Stream enables the bucket event stream.
+                      type: boolean
                   type: object
                 type: array
               extraEnvVars:

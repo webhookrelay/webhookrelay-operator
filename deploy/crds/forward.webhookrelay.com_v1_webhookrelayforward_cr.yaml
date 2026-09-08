@@ -4,7 +4,7 @@ metadata:
   name: example-forward
 spec:
   secretRefName: whr-credentials
-  secretRefNamespace: ""
+  websocketTransport: true
   buckets:
   - name: k8s-operator
     inputs:
@@ -14,4 +14,6 @@ spec:
       responseStatusCode: 200
     outputs:
     - name: webhook-receiver
+      lockPath: true
+      internal: true
       destination: http://destination:5050/webhooks

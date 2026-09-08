@@ -157,6 +157,20 @@ func TestDesiredOutputsAllowsReplayForUnrelatedOutput(t *testing.T) {
 	require.Len(t, outputs, 1)
 }
 
+func TestDesiredOutputsRejectsReplayForEphemeralBucket(t *testing.T) {
+	internal := true
+	ephemeral := true
+	_, err := desiredOutputs(&forwardv1.BucketSpec{
+		Name: testBucketID, Ephemeral: &ephemeral,
+		Outputs: []forwardv1.OutputSpec{{
+			Name: testOutputName, Internal: &internal,
+			ReplayMissing: &forwardv1.ReplayMissingSpec{Enabled: true},
+		}},
+	}, &webhookrelay.Bucket{ID: testBucketID})
+
+	require.ErrorContains(t, err, "is ephemeral")
+}
+
 func TestHeadersEqualDetectsAddedAndRemovedHeaders(t *testing.T) {
 	assert.False(t, headersEqual(
 		map[string][]string{testFirstHeader: {testFirstValue}},

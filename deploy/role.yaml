@@ -14,7 +14,6 @@ rules:
   - persistentvolumeclaims
   - events
   - configmaps
-  - secrets
   verbs:
   - create
   - delete
@@ -22,6 +21,14 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - apps

@@ -52,6 +52,22 @@ type BucketSpec struct {
 
 	Description string `json:"description,omitempty"`
 
+	// Stream enables the bucket event stream.
+	Stream *bool `json:"stream,omitempty"`
+
+	// Ephemeral disables webhook log persistence for this bucket.
+	Ephemeral *bool `json:"ephemeral,omitempty"`
+
+	// LargeWebhooks enables payloads larger than the standard limit.
+	LargeWebhooks *bool `json:"largeWebhooks,omitempty"`
+
+	// StaticIP routes public output delivery through a static egress IP.
+	StaticIP *bool `json:"staticIP,omitempty"`
+
+	// Auth protects every public input in this bucket. Authentication values
+	// must come from a Secret in the WebhookRelayForward namespace.
+	Auth *BucketAuthSpec `json:"auth,omitempty"`
+
 	// Inputs are your public endpoints. Inputs can either be https://my.webhookrelay.com/v1/webhooks/[unique ID]
 	// format or custom subdomains under https://[subdomain].hooks.webhookrelay.com or
 	// completely custom domains such as https://hooks.example.com.
@@ -61,6 +77,26 @@ type BucketSpec struct {
 
 	// Outputs are destinations where webhooks/API requests should be forwarded.
 	Outputs []OutputSpec `json:"outputs,omitempty"`
+}
+
+// BucketAuthSpec configures authentication for incoming requests.
+type BucketAuthSpec struct {
+	// Type selects no authentication, HTTP Basic authentication, or token authentication.
+	// +kubebuilder:validation:Enum=none;basic;token
+	Type string `json:"type"`
+
+	// Username is required for basic authentication.
+	Username string `json:"username,omitempty"`
+
+	// SecretKeyRef selects the Basic password or authentication token. The
+	// Secret is always read from the WebhookRelayForward namespace.
+	SecretKeyRef *SecretKeyRef `json:"secretKeyRef,omitempty"`
+}
+
+// SecretKeyRef selects one value from a Secret in the CR namespace.
+type SecretKeyRef struct {
+	Name string `json:"name"`
+	Key  string `json:"key"`
 }
 
 // InputSpec defines an input that belong to a bucket

@@ -33,7 +33,10 @@ func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, bu
 
 	diff := getInputsDiff(bucket.Inputs, desired)
 
-	var err error
+	var (
+		err     error
+		syncErr error
+	)
 
 	// Create inputs that need to be created
 	for idx := range diff.create {
@@ -44,6 +47,7 @@ func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, bu
 		_, err = r.apiClient.client.CreateInput(diff.create[idx])
 		if err != nil {
 			logger.Error(err, "failed to create input")
+			syncErr = appendInputSyncError(syncErr, "create", diff.create[idx], err)
 		}
 	}
 
@@ -57,6 +61,7 @@ func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, bu
 			logger.Error(err, "failed to update input",
 				"input_id", diff.update[idx].ID,
 			)
+			syncErr = appendInputSyncError(syncErr, "update", diff.update[idx], err)
 		}
 	}
 
@@ -71,12 +76,21 @@ func (r *ReconcileWebhookRelayForward) ensureBucketInputs(logger logr.Logger, bu
 		})
 		if err != nil {
 			logger.Error(err, "failed to delete input",
-				"input_id", diff.update[idx].ID,
+				"input_id", diff.delete[idx].ID,
 			)
+			syncErr = appendInputSyncError(syncErr, "delete", diff.delete[idx], err)
 		}
 	}
 
-	return nil
+	return syncErr
+}
+
+func appendInputSyncError(current error, operation string, input *webhookrelay.Input, err error) error {
+	next := fmt.Errorf("failed to %s input %q: %w", operation, input.Name, err)
+	if current == nil {
+		return next
+	}
+	return fmt.Errorf("%v; %w", current, next)
 }
 
 func desiredInputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucket) []*webhookrelay.Input {
@@ -92,13 +106,14 @@ func desiredInputs(bucketSpec *forwardv1.BucketSpec, bucket *webhookrelay.Bucket
 func inputSpecToInput(spec *forwardv1.InputSpec, bucket *webhookrelay.Bucket) *webhookrelay.Input {
 	// Ensuring that ResponseFromOutput is either empty, 'anyOutput' or an actual ID
 	// of the output that is inside this bucket
-	if spec.ResponseFromOutput != "" && spec.ResponseFromOutput != "anyOutput" {
+	responseFromOutput := spec.ResponseFromOutput
+	if responseFromOutput != "" && responseFromOutput != "anyOutput" {
 		// checking maybe it's specified by name
 		for idx := range bucket.Outputs {
 			output := bucket.Outputs[idx]
-			if output.Name == spec.ResponseFromOutput || output.ID == spec.ResponseFromOutput {
+			if output.Name == responseFromOutput || output.ID == responseFromOutput {
 				// found it
-				spec.ResponseFromOutput = output.ID
+				responseFromOutput = output.ID
 				break
 			}
 		}
@@ -111,7 +126,7 @@ func inputSpecToInput(spec *forwardv1.InputSpec, bucket *webhookrelay.Bucket) *w
 		Headers:            spec.ResponseHeaders,
 		StatusCode:         spec.ResponseStatusCode,
 		Body:               spec.ResponseBody,
-		ResponseFromOutput: spec.ResponseFromOutput,
+		ResponseFromOutput: responseFromOutput,
 		PathPrefix:         spec.PathPrefix,
 		StripPathPrefix:    spec.StripPathPrefix,
 		TLSVersion:         spec.TLSVersion,
