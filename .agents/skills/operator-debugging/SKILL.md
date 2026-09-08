@@ -38,12 +38,15 @@ workflows may remain queued until a maintainer approves them.
 ## 2. Separate reconcile failures from agent failures
 
 - No generated Deployment: inspect operator logs, the credentials Secret name
-  and namespace, CRD schema rejection, RBAC, and owner references.
+  and namespace, cross-namespace reference rejection, CRD schema rejection,
+  RBAC, and owner references.
 - `routingStatus: Failed`: use `status.message` and operator logs, then compare
   the desired input/output fields with the exact remote bucket owned by the
   run. Redact tokens and request authorization headers.
 - Agent pod not Ready: inspect image pull, environment variables sourced from
-  the Secret, DNS/egress, and agent container logs.
+  the Secret, node architecture versus image platform, resource constraints,
+  DNS/egress, and agent container logs. If outbound gRPC is blocked, inspect
+  the generated `WEBSOCKET_TRANSPORT` value before changing routing state.
 - Repeated remote creation: check identity matching and requeue behavior before
   cleanup. Stop the controller before deleting remote resources.
 
@@ -61,6 +64,9 @@ request records. Check, in order:
 5. `lockPath`, response settings, and header overrides match the expectation.
 6. For `functionId`, confirm the configured ID is the dedicated fixture and
    assert the fixture's known request or response transformation.
+
+If the Relay API rejects `replay_missing`, confirm the output is internal and
+is not selected by any input's `responseFromOutput` (including `anyOutput`).
 
 A matching bucket/output in the production API is not evidence of delivery.
 Likewise, a receiver log without a nonce assertion can belong to another retry

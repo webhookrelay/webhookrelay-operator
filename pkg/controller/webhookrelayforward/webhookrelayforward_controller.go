@@ -36,6 +36,7 @@ const (
 	// to specify authentication details for the container
 	containerTokenKeyEnvName    = "KEY"
 	containerTokenSecretEnvName = "SECRET"
+	containerWebsocketEnvName   = "WEBSOCKET_TRANSPORT"
 	// containerBucketsEnvName specify which buckets the agent should
 	// subscribe to
 	containerBucketsEnvName = "BUCKETS"

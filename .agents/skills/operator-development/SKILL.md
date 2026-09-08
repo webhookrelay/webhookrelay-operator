@@ -32,10 +32,15 @@ in the PR body, and update the plan when the parent merges.
 - Helm/CRD/RBAC: `charts/webhookrelay-operator` and `deploy`.
 - End-to-end harness: `.test/e2e-k3s.sh` and `.github/workflows`.
 
-An API-type change is incomplete until generated deepcopy code and both chart
-and deploy CRDs agree. Use the repository's pinned generator path (`make
-operator-sdk go-gen`) until the modernization plan replaces it, then inspect
-the generated diff rather than accepting it blindly.
+An API-type change is incomplete until generated deepcopy code and the deploy,
+chart, and OLM CRDs agree. Use the repository's pinned generator path (`make
+go-gen`), then inspect the generated diff rather than accepting it blindly.
+
+Credential Secret references must stay in the `WebhookRelayForward` namespace.
+Reject an explicit different `secretRefNamespace` before any Kubernetes API
+read, and never log Secret data. For relay-agent settings, prefer a typed CRD
+field over a magic `extraEnvVars` entry; define precedence explicitly and test
+the complete generated Deployment, including image and resources.
 
 ## Development loop
 
@@ -77,7 +82,10 @@ production case must:
 
 Cover routing fields as table-driven cases where possible: `lockPath`,
 `overrideHeaders`, `disabled`, `timeout`, input response settings,
-`responseFromOutput`, and input/output `functionId`. Function cases require a
+`responseFromOutput`, durable delivery, throttling, replay-on-connect, and
+input/output `functionId`. Replay-on-connect belongs on a dedicated internal
+output and cannot share an output used for synchronous input responses.
+Function cases require a
 dedicated fixture function whose ID is supplied by a protected secret. Assert
 its known transformation at the receiver (or its known response at the
 caller), not merely that the API stored the ID. Skip with a clear reason when

@@ -2,6 +2,7 @@ package webhookrelayforward
 
 import (
 	"reflect"
+	"strconv"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -24,8 +25,8 @@ func (r *ReconcileWebhookRelayForward) checkDeployment(cr *forwardv1.WebhookRela
 	desiredDeployment := r.newDeploymentForCR(cr)
 
 	if len(current.Spec.Template.Spec.Containers) != len(desiredDeployment.Spec.Template.Spec.Containers) {
-		equal = false
 		patched.Spec.Template.Spec.Containers = desiredDeployment.Spec.Template.Spec.Containers
+		return patched, false
 	}
 
 	for i := range desiredDeployment.Spec.Template.Spec.Containers {
@@ -46,6 +47,9 @@ func (r *ReconcileWebhookRelayForward) checkDeployment(cr *forwardv1.WebhookRela
 
 func containersEqual(r, l *corev1.Container) bool {
 	if r.Image != l.Image {
+		return false
+	}
+	if !reflect.DeepEqual(r.Resources, l.Resources) {
 		return false
 	}
 	if len(r.Env) != len(l.Env) {
@@ -150,7 +154,19 @@ func (r *ReconcileWebhookRelayForward) envForDeployment(cr *forwardv1.WebhookRel
 	}
 
 	if len(cr.Spec.ExtraEnvVars) > 0 {
-		env = append(env, cr.Spec.ExtraEnvVars...)
+		for i := range cr.Spec.ExtraEnvVars {
+			if cr.Spec.WebsocketTransport != nil && cr.Spec.ExtraEnvVars[i].Name == containerWebsocketEnvName {
+				continue
+			}
+			env = append(env, cr.Spec.ExtraEnvVars[i])
+		}
+	}
+
+	if cr.Spec.WebsocketTransport != nil {
+		env = append(env, corev1.EnvVar{
+			Name:  containerWebsocketEnvName,
+			Value: strconv.FormatBool(*cr.Spec.WebsocketTransport),
+		})
 	}
 
 	return env

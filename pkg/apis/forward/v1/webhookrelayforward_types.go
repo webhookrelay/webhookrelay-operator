@@ -16,10 +16,13 @@ type WebhookRelayForwardSpec struct {
 	// If secret is lost, just create a new token
 	SecretRefName string `json:"secretRefName,omitempty"`
 
-	// SecretRefNamespace is the namespace of the secret reference.
+	// SecretRefNamespace is deprecated. Credentials must be in the same
+	// namespace as this WebhookRelayForward. Empty or the CR namespace is
+	// accepted for compatibility; any other value is rejected.
 	SecretRefNamespace string `json:"secretRefNamespace,omitempty"`
 
-	// Image is webhookrelayd container, defaults to webhookrelay/webhookrelayd:latest
+	// Image is the relay agent container. It defaults to the operator's configured
+	// image (webhookrelay/webhookrelayd-ubi8:latest in the shipped deployment).
 	Image string `json:"image,omitempty"`
 
 	// Buckets to manage and subscribe to. Each CR can control one or more buckets. Buckets can be inspected
@@ -31,6 +34,12 @@ type WebhookRelayForwardSpec struct {
 
 	// Extra environment variables to pass to the relay agent container
 	ExtraEnvVars []corev1.EnvVar `json:"extraEnvVars,omitempty"`
+
+	// WebsocketTransport makes the relay agent connect over WebSocket on port
+	// 443 instead of the default gRPC transport. This is useful on networks
+	// that restrict outbound ports. When set, it takes precedence over a
+	// WEBSOCKET_TRANSPORT entry in extraEnvVars.
+	WebsocketTransport *bool `json:"websocketTransport,omitempty"`
 }
 
 // BucketSpec defines a bucket that groups one or more inputs (public endpoints) and

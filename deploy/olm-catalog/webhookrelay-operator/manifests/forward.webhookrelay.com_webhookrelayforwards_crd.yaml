@@ -391,7 +391,9 @@ spec:
                   type: object
                 type: array
               image:
-                description: Image is webhookrelayd container, defaults to webhookrelay/webhookrelayd:latest
+                description: |-
+                  Image is the relay agent container. It defaults to the operator's configured
+                  image (webhookrelay/webhookrelayd-ubi8:latest in the shipped deployment).
                 type: string
               resources:
                 description: Resources is to set the resource requirements of the
@@ -432,8 +434,18 @@ spec:
                   If secret is lost, just create a new token
                 type: string
               secretRefNamespace:
-                description: SecretRefNamespace is the namespace of the secret reference.
+                description: |-
+                  SecretRefNamespace is deprecated. Credentials must be in the same
+                  namespace as this WebhookRelayForward. Empty or the CR namespace is
+                  accepted for compatibility; any other value is rejected.
                 type: string
+              websocketTransport:
+                description: |-
+                  WebsocketTransport makes the relay agent connect over WebSocket on port
+                  443 instead of the default gRPC transport. This is useful on networks
+                  that restrict outbound ports. When set, it takes precedence over a
+                  WEBSOCKET_TRANSPORT entry in extraEnvVars.
+                type: boolean
             required:
             - buckets
             type: object

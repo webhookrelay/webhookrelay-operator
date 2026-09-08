@@ -229,6 +229,14 @@ metadata:
 spec:
   secretRefName: e2e-credentials
   image: busybox:1.36.1
+  websocketTransport: false
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
   buckets:
     - name: ${BUCKET_NAME}
       description: ${BUCKET_DESCRIPTION}
@@ -269,6 +277,14 @@ metadata:
 spec:
   secretRefName: e2e-credentials
   image: ${AGENT_IMAGE}
+  websocketTransport: false
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
   buckets:
     - name: ${BUCKET_NAME}
       description: ${BUCKET_DESCRIPTION}
@@ -344,6 +360,12 @@ exercise_reconcile() {
   jq -e --arg image "${expected_agent_image}" '
     .metadata.ownerReferences[0].kind == "WebhookRelayForward" and
     .spec.template.spec.containers[0].image == $image and
+    .spec.template.spec.containers[0].resources.requests.cpu == "10m" and
+    .spec.template.spec.containers[0].resources.requests.memory == "16Mi" and
+    .spec.template.spec.containers[0].resources.limits.cpu == "100m" and
+    .spec.template.spec.containers[0].resources.limits.memory == "64Mi" and
+    any(.spec.template.spec.containers[0].env[];
+      .name == "WEBSOCKET_TRANSPORT" and .value == "false") and
     any(.spec.template.spec.containers[0].env[];
       .name == "KEY" and .valueFrom.secretKeyRef.name == "e2e-credentials") and
     any(.spec.template.spec.containers[0].env[];

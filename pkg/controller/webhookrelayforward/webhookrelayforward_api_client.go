@@ -17,7 +17,8 @@ import (
 
 // Errors
 var (
-	ErrCredentialsNotProvided = errors.New("access token key and secret not provided")
+	ErrCredentialsNotProvided        = errors.New("access token key and secret not provided")
+	ErrCrossNamespaceSecretReference = errors.New("cross-namespace credential secret references are not allowed")
 )
 
 // WebhookRelayClient is a wrapper for the Webhook Relay API client
@@ -47,10 +48,9 @@ func (r *ReconcileWebhookRelayForward) setClientForCluster(instance *forwardv1.W
 	)
 
 	if instance.Spec.SecretRefName != "" {
-		namespace := instance.Spec.SecretRefNamespace
-		if namespace == "" {
-			// defaulting to CR namespace
-			namespace = instance.GetNamespace()
+		namespace, err := credentialsSecretNamespace(instance)
+		if err != nil {
+			return err
 		}
 
 		// Obtain the Webhook Relay API access token key and secret to be used in the client.
@@ -59,7 +59,7 @@ func (r *ReconcileWebhookRelayForward) setClientForCluster(instance *forwardv1.W
 			Name:      instance.Spec.SecretRefName,
 		}
 		secretInstance := &corev1.Secret{}
-		err := r.client.Get(context.TODO(), secretNamespacedName, secretInstance)
+		err = r.client.Get(context.TODO(), secretNamespacedName, secretInstance)
 		if err != nil {
 			return err
 		}
@@ -110,4 +110,16 @@ func (r *ReconcileWebhookRelayForward) setClientForCluster(instance *forwardv1.W
 	}
 
 	return nil
+}
+
+func credentialsSecretNamespace(instance *forwardv1.WebhookRelayForward) (string, error) {
+	namespace := instance.GetNamespace()
+	if instance.Spec.SecretRefNamespace != "" && instance.Spec.SecretRefNamespace != namespace {
+		return "", fmt.Errorf("%w: WebhookRelayForward %s/%s cannot read Secret %s/%s",
+			ErrCrossNamespaceSecretReference,
+			instance.GetNamespace(), instance.GetName(),
+			instance.Spec.SecretRefNamespace, instance.Spec.SecretRefName,
+		)
+	}
+	return namespace, nil
 }
