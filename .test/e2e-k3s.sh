@@ -418,10 +418,10 @@ assert_live_delivery() {
   local expected_override="$3"
   local expected_function_header="$4"
   local nonce="${RUN_ID}-${case_name}"
-  local response_body_file="${RUN_DIR}/${case_name}-response-body.txt"
-  local response_headers_file="${RUN_DIR}/${case_name}-response-headers.txt"
+  local response_body_file="${ARTIFACT_DIR}/${case_name}-response-body.txt"
+  local response_headers_file="${ARTIFACT_DIR}/${case_name}-response-headers.txt"
   local response_status
-  local receiver_record="${RUN_DIR}/${case_name}-receiver.json"
+  local receiver_record="${ARTIFACT_DIR}/${case_name}-receiver.json"
 
   response_status="$(curl --show-error --silent \
     --dump-header "${response_headers_file}" --output "${response_body_file}" \
@@ -445,7 +445,7 @@ assert_live_delivery() {
   done
   jq -e --arg nonce "${nonce}" --arg override "${expected_override}" \
     --arg function_header "${expected_function_header}" '
-      .method == "POST" and .path == "/hooks/base" and .rawQuery == "" and
+      .method == "POST" and .path == "/hooks/base" and .rawQuery == "source=production-e2e" and
       .nonce == $nonce and .overrideHeader == $override and .functionHeader == $function_header and
       ((.body | fromjson).nonce == $nonce) and
       (if $function_header == "" then
