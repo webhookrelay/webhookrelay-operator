@@ -370,7 +370,13 @@ exercise_production_reconcile() {
   [[ -n "${bucket_id}" && -n "${input_id}" && -n "${output_id}" ]] || fail "production resources did not converge"
 
   kubectl -n "${NAMESPACE}" rollout status deployment/e2e-forward-whr-deployment --timeout=180s
-  public_endpoint="$(jq -r '.status.publicEndpoints[0] // empty' "${ARTIFACT_DIR}/reconciled-forward.json")"
+  for _ in $(seq 1 60); do
+    kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o json \
+      >"${ARTIFACT_DIR}/reconciled-forward.json"
+    public_endpoint="$(jq -r '.status.publicEndpoints[0] // empty' "${ARTIFACT_DIR}/reconciled-forward.json")"
+    [[ "${public_endpoint}" != "" ]] && break
+    sleep 1
+  done
   [[ "${public_endpoint}" == https://* ]] || fail "the CR did not publish a production input endpoint"
 
   assert_live_delivery "${public_endpoint}" baseline baseline ""
@@ -499,8 +505,9 @@ collect_diagnostics() {
 }
 
 cleanup() {
+  local exit_status=$?
   local pid
-  TEST_STATUS=$?
+  TEST_STATUS=${exit_status}
   trap - EXIT INT TERM
   if ((TEST_STATUS != 0)); then
     collect_diagnostics
