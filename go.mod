@@ -11,7 +11,7 @@ require (
 	github.com/operator-framework/operator-sdk v0.18.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.12.1
-	github.com/webhookrelay/webhookrelay-go v0.6.0
+	github.com/webhookrelay/webhookrelay-go v0.6.1-0.20260908205118-4b3437e78328
 	k8s.io/api v0.18.2
 	k8s.io/apimachinery v0.18.2
 	k8s.io/client-go v12.0.0+incompatible
