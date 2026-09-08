@@ -4,6 +4,9 @@ metadata:
   name: webhookrelay-operator
 spec:
   replicas: 1
+  # Avoid overlapping the legacy ConfigMap leader with the Lease-based manager.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       name: webhookrelay-operator

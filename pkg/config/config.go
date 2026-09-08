@@ -12,8 +12,7 @@ type (
 			Secret string `envconfig:"RELAY_SECRET"`
 		}
 		// HTTPS proxy variable.
-		// Note: not using standard HTTPS_PROXY variable so that operator-sdk clients
-		// wouldn't try go through the proxy
+		// Note: not using standard HTTPS_PROXY so Kubernetes clients do not use it.
 		HTTPSPRoxy string `envconfig:"CLIENT_HTTPS_PROXY"`
 	}
 )

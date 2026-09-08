@@ -11,15 +11,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/go-logr/logr"
 
@@ -52,48 +49,22 @@ const (
 // Add creates a new WebhookRelayForward Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
-	return add(mgr, newReconciler(mgr))
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&forwardv1.WebhookRelayForward{}).
+		Owns(&appsv1.Deployment{}).
+		Complete(newReconciler(mgr))
 }
 
-// newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
+// newReconciler returns a new controller reconciler.
+func newReconciler(mgr manager.Manager) *ReconcileWebhookRelayForward {
 	cfg := config.MustLoad()
 	return &ReconcileWebhookRelayForward{
 		client:   mgr.GetClient(),
 		scheme:   mgr.GetScheme(),
-		recorder: mgr.GetEventRecorderFor("webhookrelay-forwarder"),
+		recorder: mgr.GetEventRecorder("webhookrelay-forwarder"),
 		config:   &cfg,
 	}
 }
-
-// add adds a new Controller to mgr with r as the reconcile.Reconciler
-func add(mgr manager.Manager, r reconcile.Reconciler) error {
-	// Create a new controller
-	c, err := controller.New("webhookrelayforward-controller", mgr, controller.Options{Reconciler: r})
-	if err != nil {
-		return err
-	}
-
-	// Watch for changes to primary resource WebhookRelayForward
-	err = c.Watch(&source.Kind{Type: &forwardv1.WebhookRelayForward{}}, &handler.EnqueueRequestForObject{})
-	if err != nil {
-		return err
-	}
-
-	// Watch for changes to secondary resource Deployments and requeue the owner WebhookRelayForward
-	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &forwardv1.WebhookRelayForward{},
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// blank assignment to verify that ReconcileWebhookRelayForward implements reconcile.Reconciler
-var _ reconcile.Reconciler = &ReconcileWebhookRelayForward{}
 
 // ReconcileWebhookRelayForward reconciles a WebhookRelayForward object
 type ReconcileWebhookRelayForward struct {
@@ -101,7 +72,7 @@ type ReconcileWebhookRelayForward struct {
 	// that reads objects from the cache and writes to the apiserver
 	client   client.Client
 	scheme   *runtime.Scheme
-	recorder record.EventRecorder
+	recorder events.EventRecorder
 
 	apiClient *WebhookRelayClient
 	config    *config.Config
@@ -114,22 +85,22 @@ type ReconcileWebhookRelayForward struct {
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
-func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+func (r *ReconcileWebhookRelayForward) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	logger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	reconcilePeriod := reconcilePeriodSeconds * time.Second
-	reconcileResult := reconcile.Result{RequeueAfter: reconcilePeriod}
-	reconcileImmediately := reconcile.Result{RequeueAfter: time.Second}
+	reconcileResult := ctrl.Result{RequeueAfter: reconcilePeriod}
+	reconcileImmediately := ctrl.Result{RequeueAfter: time.Second}
 
 	// Fetch the WebhookRelayForward instance
 	instance := &forwardv1.WebhookRelayForward{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
+	err := r.client.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
-			return reconcile.Result{}, nil
+			return ctrl.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
 		return reconcileResult, err
@@ -144,19 +115,20 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 		r.apiClient.instanceName != instance.GetName() ||
 		r.apiClient.instanceGeneration != instance.GetGeneration() ||
 		r.apiClient.instanceUID != instance.GetUID() {
-		if err := r.setClientForCluster(instance); err != nil {
+		if err := r.setClientForCluster(ctx, instance); err != nil {
 			logger.Error(err, "Failed to configure Webhook Relay API client, cannot continue")
 			return reconcileResult, err
 		}
 		logger.Info("API client initialized")
 	}
 
-	if err := r.ensureRoutingConfiguration(logger, instance); err != nil {
+	if err := r.ensureRoutingConfiguration(ctx, logger, instance); err != nil {
 		logger.Error(err, "encountered errors while ensuring routing configuration, check your CR spec")
 		// If configuration fails, we still need to ensure deployment is running, however
 		// we still need to report it
 		requeue, updateErr := r.updateRoutingStatus(
 			logger,
+			ctx,
 			forwardv1.RoutingStatusFailed,
 			fmt.Sprintf("encountered errors (%s) while ensuring routing configuration, check your CR spec", err),
 			instance,
@@ -176,6 +148,7 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 		// Setting status to Configured
 		requeue, updateErr := r.updateRoutingStatus(
 			logger,
+			ctx,
 			forwardv1.RoutingStatusConfigured,
 			"",
 			instance,
@@ -189,7 +162,7 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 		}
 	}
 
-	if err := r.reconcile(logger, instance); err != nil {
+	if err := r.reconcile(ctx, logger, instance); err != nil {
 		logger.Info("Reconcile failed", "error", err)
 	}
 
@@ -198,6 +171,7 @@ func (r *ReconcileWebhookRelayForward) Reconcile(request reconcile.Request) (rec
 
 func (r *ReconcileWebhookRelayForward) updateRoutingStatus(
 	logger logr.Logger,
+	ctx context.Context,
 	status forwardv1.RoutingStatus,
 	message string,
 	instance *forwardv1.WebhookRelayForward) (bool, error) {
@@ -216,11 +190,17 @@ func (r *ReconcileWebhookRelayForward) updateRoutingStatus(
 		"message", message,
 	)
 
-	err := r.client.Status().Patch(context.TODO(), patch, client.MergeFrom(instance))
+	err := r.client.Status().Patch(ctx, patch, client.MergeFrom(instance))
 	return true, err
 }
 
-func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(logger logr.Logger, status forwardv1.AgentStatus, ready bool, instance *forwardv1.WebhookRelayForward) (bool, error) {
+func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(
+	ctx context.Context,
+	logger logr.Logger,
+	status forwardv1.AgentStatus,
+	ready bool,
+	instance *forwardv1.WebhookRelayForward,
+) (bool, error) {
 	if instance.Status.AgentStatus == status && instance.Status.Ready == ready {
 		return false, nil
 	}
@@ -235,11 +215,11 @@ func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(logger logr.Logger
 		"ready", ready,
 	)
 
-	err := r.client.Status().Patch(context.TODO(), patch, client.MergeFrom(instance))
+	err := r.client.Status().Patch(ctx, patch, client.MergeFrom(instance))
 	return true, err
 }
 
-func (r *ReconcileWebhookRelayForward) updatePublicEndpoints(logger logr.Logger, instance *forwardv1.WebhookRelayForward) (bool, error) {
+func (r *ReconcileWebhookRelayForward) updatePublicEndpoints(ctx context.Context, logger logr.Logger, instance *forwardv1.WebhookRelayForward) (bool, error) {
 
 	patch, update := r.shouldUpdatePublicEndpoints(instance)
 	if !update {
@@ -250,11 +230,11 @@ func (r *ReconcileWebhookRelayForward) updatePublicEndpoints(logger logr.Logger,
 		"endpoints", patch.Status.PublicEndpoints,
 	)
 
-	err := r.client.Status().Patch(context.TODO(), patch, client.MergeFrom(instance))
+	err := r.client.Status().Patch(ctx, patch, client.MergeFrom(instance))
 	return true, err
 }
 
-func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
+func (r *ReconcileWebhookRelayForward) reconcile(ctx context.Context, logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
 
 	// Define a new Deployment object
 	deployment := r.newDeploymentForCR(instance)
@@ -266,14 +246,21 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 
 	// Check if this Deployment already exists
 	found := &appsv1.Deployment{}
-	err := r.client.Get(context.TODO(), types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, found)
+	err := r.client.Get(ctx, types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, found)
 	if err != nil && errors.IsNotFound(err) {
 		logger.Info("Creating a new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
-		err = r.client.Create(context.TODO(), deployment)
+		err = r.client.Create(ctx, deployment)
 		if err != nil {
-			r.recorder.Event(instance, corev1.EventTypeWarning, "FailedCreation", err.Error())
+			r.recorder.Eventf(
+				instance,
+				nil,
+				corev1.EventTypeWarning,
+				"FailedCreation",
+				"CreatingDeployment",
+				err.Error(),
+			)
 
-			_, updateErr := r.updateDeploymentStatus(logger, forwardv1.AgentStatusCreating, false, instance)
+			_, updateErr := r.updateDeploymentStatus(ctx, logger, forwardv1.AgentStatusCreating, false, instance)
 			if updateErr != nil {
 				if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
 					logger.Error(updateErr, "Failed to update CR status",
@@ -284,7 +271,7 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 			return err
 		}
 
-		_, updateErr := r.updateDeploymentStatus(logger, forwardv1.AgentStatusRunning, true, instance)
+		_, updateErr := r.updateDeploymentStatus(ctx, logger, forwardv1.AgentStatusRunning, true, instance)
 		if updateErr != nil {
 			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
 				logger.Error(updateErr, "Failed to update CR status",
@@ -303,7 +290,7 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 	patched, equals := r.checkDeployment(instance, found)
 	if equals {
 		// TODO: check replicas 1/1 for Ready status
-		updated, updateErr := r.updateDeploymentStatus(logger, forwardv1.AgentStatusRunning, true, instance)
+		updated, updateErr := r.updateDeploymentStatus(ctx, logger, forwardv1.AgentStatusRunning, true, instance)
 		if updateErr != nil {
 			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
 				logger.Error(updateErr, "Failed to update CR status",
@@ -315,7 +302,7 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 			return nil
 		}
 
-		_, updateErr = r.updatePublicEndpoints(logger, instance)
+		_, updateErr = r.updatePublicEndpoints(ctx, logger, instance)
 		if updateErr != nil {
 			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfill") {
 				logger.Error(updateErr, "Failed to update CR status public endpoint list",
@@ -328,9 +315,16 @@ func (r *ReconcileWebhookRelayForward) reconcile(logger logr.Logger, instance *f
 		return nil
 	}
 
-	err = r.client.Update(context.TODO(), patched)
+	err = r.client.Update(ctx, patched)
 	if err != nil {
-		r.recorder.Event(instance, corev1.EventTypeWarning, "FailedUpdate", err.Error())
+		r.recorder.Eventf(
+			instance,
+			nil,
+			corev1.EventTypeWarning,
+			"FailedUpdate",
+			"UpdatingDeployment",
+			err.Error(),
+		)
 		return fmt.Errorf("failed to update Deployment: %s", err)
 	}
 

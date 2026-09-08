@@ -15,7 +15,8 @@ Keep these groups separate unless the plan explicitly combines them:
 
 1. CI and test infrastructure.
 2. Go toolchain and Webhook Relay client/test dependencies.
-3. Kubernetes, controller-runtime, and operator-sdk dependencies.
+3. Kubernetes and controller-runtime dependencies; remove rather than extend
+   legacy operator-sdk runtime coupling.
 4. Controller/API migration.
 5. Chart, image, and release modernization.
 

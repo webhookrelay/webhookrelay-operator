@@ -40,7 +40,7 @@ type WebhookRelayClient struct {
 	bucketsCache *bucketsCache
 }
 
-func (r *ReconcileWebhookRelayForward) setClientForCluster(instance *forwardv1.WebhookRelayForward) error {
+func (r *ReconcileWebhookRelayForward) setClientForCluster(ctx context.Context, instance *forwardv1.WebhookRelayForward) error {
 	// credentials to use
 	var (
 		relayKey    string
@@ -59,7 +59,7 @@ func (r *ReconcileWebhookRelayForward) setClientForCluster(instance *forwardv1.W
 			Name:      instance.Spec.SecretRefName,
 		}
 		secretInstance := &corev1.Secret{}
-		err = r.client.Get(context.TODO(), secretNamespacedName, secretInstance)
+		err = r.client.Get(ctx, secretNamespacedName, secretInstance)
 		if err != nil {
 			return err
 		}
