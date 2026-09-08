@@ -11,8 +11,8 @@ import (
 
 func TestInputSpecToInputUsesAPIStatusDefault(t *testing.T) {
 	input := inputSpecToInput(
-		&forwardv1.InputSpec{Name: "input"},
-		&webhookrelay.Bucket{ID: "bucket"},
+		&forwardv1.InputSpec{Name: testInputName},
+		&webhookrelay.Bucket{ID: testBucketID},
 	)
 
 	assert.Equal(t, 200, input.StatusCode)
@@ -25,4 +25,20 @@ func TestInputEqualDetectsHeaderChanges(t *testing.T) {
 	assert.False(t, inputEqual(current, desired))
 	desired.Headers[testHeaderLowerName] = []string{testHeaderBefore}
 	assert.True(t, inputEqual(current, desired))
+}
+
+func TestInputSpecToInputMapsTLSAndPathControls(t *testing.T) {
+	input := inputSpecToInput(
+		&forwardv1.InputSpec{
+			Name:            testInputName,
+			StripPathPrefix: true,
+			TLSVersion:      "1.2",
+			LegacyTLS:       true,
+		},
+		&webhookrelay.Bucket{ID: testBucketID},
+	)
+
+	assert.True(t, input.StripPathPrefix)
+	assert.Equal(t, "1.2", input.TLSVersion)
+	assert.True(t, input.LegacyTLS)
 }

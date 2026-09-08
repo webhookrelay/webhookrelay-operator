@@ -113,6 +113,9 @@ func inputSpecToInput(spec *forwardv1.InputSpec, bucket *webhookrelay.Bucket) *w
 		Body:               spec.ResponseBody,
 		ResponseFromOutput: spec.ResponseFromOutput,
 		PathPrefix:         spec.PathPrefix,
+		StripPathPrefix:    spec.StripPathPrefix,
+		TLSVersion:         spec.TLSVersion,
+		LegacyTLS:          spec.LegacyTLS,
 		Description:        spec.Description,
 	}
 	// The API normalizes an omitted status code to 200. Mirror that default in
@@ -200,6 +203,15 @@ func inputEqual(current, desired *webhookrelay.Input) bool {
 	}
 
 	if current.PathPrefix != desired.PathPrefix {
+		return false
+	}
+	if current.StripPathPrefix != desired.StripPathPrefix {
+		return false
+	}
+	if current.TLSVersion != desired.TLSVersion {
+		return false
+	}
+	if current.LegacyTLS != desired.LegacyTLS {
 		return false
 	}
 

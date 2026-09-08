@@ -254,7 +254,7 @@ apply_production_forward() {
   local input_function_yaml=""
   local output_function_yaml=""
   [[ -z "${input_function_id}" ]] || input_function_yaml="          functionId: ${input_function_id}"
-  [[ -z "${output_function_id}" ]] || output_function_yaml="          function_id: ${output_function_id}"
+  [[ -z "${output_function_id}" ]] || output_function_yaml="          functionId: ${output_function_id}"
 
   umask 077
   printf 'key=%s\nsecret=%s\n' "${WHR_E2E_RELAY_KEY}" "${WHR_E2E_RELAY_SECRET}" >"${credentials_file}"
@@ -276,6 +276,9 @@ spec:
         - name: e2e-input
           description: ${BUCKET_DESCRIPTION}
           responseFromOutput: e2e-output
+          stripPathPrefix: false
+          tlsVersion: "1.2"
+          legacyTLS: false
 ${input_function_yaml}
       outputs:
         - name: e2e-output
@@ -285,9 +288,29 @@ ${input_function_yaml}
           internal: true
           lockPath: true
           timeout: 10
+          retries: 2
+          tlsVerification: true
           overrideHeaders:
             X-WHR-E2E-Override: ${override_value}
+          durability:
+            enabled: true
+            schedule: long
+            deadline: 720h
+            handoffAfter: 15m
+          throttle:
+            enabled: false
 ${output_function_yaml}
+        - name: e2e-replay-output
+          description: ${BUCKET_DESCRIPTION}
+          destination: http://e2e-receiver:8080/hooks/replay
+          disabled: true
+          internal: true
+          lockPath: true
+          timeout: 10
+          replayMissing:
+            enabled: true
+            lookback: 30m
+            limit: 250
 EOF
   PRODUCTION_RESOURCES_STARTED=true
 }
@@ -338,17 +361,25 @@ exercise_reconcile() {
 }
 
 exercise_production_reconcile() {
-  local bucket_id input_id output_id public_endpoint
+  local bucket_id input_id output_id replay_output_id public_endpoint
   for _ in $(seq 1 120); do
     kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o json \
       >"${ARTIFACT_DIR}/reconciled-forward.json"
     production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/production-buckets.json"
     if jq -e --arg name "${BUCKET_NAME}" --arg description "${BUCKET_DESCRIPTION}" '
       any(.[]; .name == $name and .description == $description and
-        any(.inputs[]?; .name == "e2e-input" and .response_from_output != "") and
+        any(.inputs[]?; .name == "e2e-input" and .response_from_output != "" and
+          .strip_path_prefix == false and .tls_version == "1.2" and .legacy_tls == false) and
         any(.outputs[]?; .name == "e2e-output" and .disabled == false and .internal == true and
           .lock_path == true and .timeout == 10 and .destination == "http://e2e-receiver:8080/hooks/base" and
-          any(.headers | to_entries[]?; (.key | ascii_downcase) == "x-whr-e2e-override" and .value[0] == "baseline")))
+          .retries == 2 and .tls_verification == true and
+          .durability.enabled == true and .durability.schedule == "long" and
+          .durability.deadline == 2592000000000000 and .durability.handoff_after == 900000000000 and
+          .throttle.enabled == false and
+          any(.headers | to_entries[]?; (.key | ascii_downcase) == "x-whr-e2e-override" and .value[0] == "baseline")) and
+        any(.outputs[]?; .name == "e2e-replay-output" and .disabled == true and .internal == true and
+          .replay_missing.enabled == true and .replay_missing.lookback == 1800000000000 and
+          .replay_missing.limit == 250))
     ' "${RUN_DIR}/production-buckets.json" >/dev/null &&
       jq -e '.status.routingStatus == "Configured"' "${ARTIFACT_DIR}/reconciled-forward.json" >/dev/null; then
       break
@@ -362,7 +393,9 @@ exercise_production_reconcile() {
     '.[] | select(.name == $name) | .inputs[] | select(.name == "e2e-input") | .id' "${RUN_DIR}/production-buckets.json")"
   output_id="$(jq -r --arg name "${BUCKET_NAME}" \
     '.[] | select(.name == $name) | .outputs[] | select(.name == "e2e-output") | .id' "${RUN_DIR}/production-buckets.json")"
-  [[ -n "${bucket_id}" && -n "${input_id}" && -n "${output_id}" ]] || fail "production resources did not converge"
+  replay_output_id="$(jq -r --arg name "${BUCKET_NAME}" \
+    '.[] | select(.name == $name) | .outputs[] | select(.name == "e2e-replay-output") | .id' "${RUN_DIR}/production-buckets.json")"
+  [[ -n "${bucket_id}" && -n "${input_id}" && -n "${output_id}" && -n "${replay_output_id}" ]] || fail "production resources did not converge"
 
   kubectl -n "${NAMESPACE}" rollout status deployment/e2e-forward-whr-deployment --timeout=180s
   for _ in $(seq 1 60); do
@@ -378,12 +411,12 @@ exercise_production_reconcile() {
 
   log "testing input function ID with live delivery"
   apply_production_forward "${FUNCTION_ID}" "" input-function
-  wait_for_production_update "${bucket_id}" "${input_id}" "${output_id}" "${FUNCTION_ID}" "" input-function
+  wait_for_production_update "${bucket_id}" "${input_id}" "${output_id}" "${replay_output_id}" "${FUNCTION_ID}" "" input-function
   assert_live_delivery "${public_endpoint}" input-function input-function applied
 
   log "testing output function ID with live delivery and stable resource identities"
   apply_production_forward "" "${FUNCTION_ID}" output-function
-  wait_for_production_update "${bucket_id}" "${input_id}" "${output_id}" "" "${FUNCTION_ID}" output-function
+  wait_for_production_update "${bucket_id}" "${input_id}" "${output_id}" "${replay_output_id}" "" "${FUNCTION_ID}" output-function
   assert_live_delivery "${public_endpoint}" output-function output-function applied
   log "production reconciliation and live delivery passed"
 }
@@ -392,18 +425,23 @@ wait_for_production_update() {
   local bucket_id="$1"
   local input_id="$2"
   local output_id="$3"
-  local input_function_id="$4"
-  local output_function_id="$5"
-  local override_value="$6"
+  local replay_output_id="$4"
+  local input_function_id="$5"
+  local output_function_id="$6"
+  local override_value="$7"
   for _ in $(seq 1 90); do
     production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/production-buckets.json"
     if jq -e --arg name "${BUCKET_NAME}" --arg bucket "${bucket_id}" --arg input "${input_id}" \
-      --arg output "${output_id}" --arg input_function "${input_function_id}" \
+      --arg output "${output_id}" --arg replay_output "${replay_output_id}" --arg input_function "${input_function_id}" \
       --arg output_function "${output_function_id}" --arg override "${override_value}" '
       any(.[]; .name == $name and .id == $bucket and
         any(.inputs[]?; .id == $input and .function_id == $input_function) and
         any(.outputs[]?; .id == $output and .function_id == $output_function and
-          any(.headers | to_entries[]?; (.key | ascii_downcase) == "x-whr-e2e-override" and .value[0] == $override)))
+          .retries == 2 and .tls_verification == true and
+          .durability.enabled == true and .throttle.enabled == false and
+          any(.headers | to_entries[]?; (.key | ascii_downcase) == "x-whr-e2e-override" and .value[0] == $override)) and
+        any(.outputs[]?; .id == $replay_output and .replay_missing.enabled == true and
+          .replay_missing.limit == 250))
     ' "${RUN_DIR}/production-buckets.json" >/dev/null; then
       return
     fi

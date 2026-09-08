@@ -3,6 +3,7 @@ package v1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // WebhookRelayForwardSpec defines the desired state of WebhookRelayForward
@@ -81,6 +82,16 @@ type InputSpec struct {
 	// petshop.com/cats -> are forwarded to [cats store]
 	PathPrefix string `json:"pathPrefix,omitempty"`
 
+	// StripPathPrefix removes PathPrefix before forwarding the request.
+	StripPathPrefix bool `json:"stripPathPrefix,omitempty"`
+
+	// TLSVersion is the minimum TLS version accepted by this input.
+	// +kubebuilder:validation:Enum="";"1.0";"1.1";"1.2";"1.3"
+	TLSVersion string `json:"tlsVersion,omitempty"`
+
+	// LegacyTLS enables legacy TLS versions and cipher suites for this input.
+	LegacyTLS bool `json:"legacyTLS,omitempty"`
+
 	// Description can be any string
 	Description string `json:"description,omitempty"`
 }
@@ -92,7 +103,15 @@ type OutputSpec struct {
 
 	// FunctionID attaches function to this output. Functions on output can modify
 	// requests that are then passed to destinations.
-	FunctionID string `json:"function_id,omitempty"`
+	FunctionID string `json:"functionId,omitempty"`
+
+	// LegacyFunctionID is the deprecated spelling retained so existing v1
+	// objects continue to reconcile. Use functionId instead.
+	// +optional
+	LegacyFunctionID string `json:"function_id,omitempty"`
+
+	// ResponseFunctionID runs after the delivery reaches a terminal outcome.
+	ResponseFunctionID string `json:"responseFunctionId,omitempty"`
 
 	// OverrideHeaders
 	OverrideHeaders map[string]string `json:"overrideHeaders,omitempty"`
@@ -117,9 +136,78 @@ type OutputSpec struct {
 	// Timeout specifies how long agent should wait for the response
 	Timeout int `json:"timeout,omitempty"`
 
+	// Retries is the number of additional delivery retries. Set -1 to disable
+	// retries beyond the initial attempts.
+	// +kubebuilder:validation:Minimum=-1
+	Retries *int `json:"retries,omitempty"`
+
+	// TLSVerification controls destination certificate verification for public outputs.
+	TLSVerification *bool `json:"tlsVerification,omitempty"`
+
+	// Rules is a Webhook Relay forwarding rule tree.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Rules *runtime.RawExtension `json:"rules,omitempty"`
+
+	// Durability configures long-period delivery retries.
+	Durability *DurabilitySpec `json:"durability,omitempty"`
+
+	// Throttle configures rate or concurrency limiting.
+	Throttle *ThrottleSpec `json:"throttle,omitempty"`
+
+	// ReplayMissing recovers never-attempted internal deliveries when an agent connects.
+	ReplayMissing *ReplayMissingSpec `json:"replayMissing,omitempty"`
+
 	// Description can be any string
 	Description string `json:"description,omitempty"`
 }
+
+// EffectiveFunctionID returns the preferred functionId value, falling back to
+// the deprecated function_id spelling for objects created by older releases.
+func (s *OutputSpec) EffectiveFunctionID() string {
+	if s.FunctionID != "" {
+		return s.FunctionID
+	}
+	return s.LegacyFunctionID
+}
+
+// DurabilitySpec configures persistent long-period retry behavior.
+type DurabilitySpec struct {
+	Enabled bool `json:"enabled"`
+
+	// +kubebuilder:validation:Enum=seconds;medium;long;custom
+	Schedule string `json:"schedule,omitempty"`
+
+	CustomDelays []Duration `json:"customDelays,omitempty"`
+	Deadline     Duration   `json:"deadline,omitempty"`
+	HandoffAfter Duration   `json:"handoffAfter,omitempty"`
+}
+
+// ThrottleSpec configures output queue throughput.
+type ThrottleSpec struct {
+	Enabled bool `json:"enabled"`
+
+	// +kubebuilder:validation:Enum=rate;concurrency
+	Mode string `json:"mode,omitempty"`
+
+	Rate int `json:"rate,omitempty"`
+
+	// +kubebuilder:validation:Enum=second;minute;hour
+	Interval      string   `json:"interval,omitempty"`
+	MaxConcurrent int      `json:"maxConcurrent,omitempty"`
+	MaxQueueDepth int      `json:"maxQueueDepth,omitempty"`
+	Deadline      Duration `json:"deadline,omitempty"`
+}
+
+// ReplayMissingSpec configures replay-on-connect for an internal output.
+type ReplayMissingSpec struct {
+	Enabled  bool     `json:"enabled"`
+	Lookback Duration `json:"lookback,omitempty"`
+	Limit    int      `json:"limit,omitempty"`
+}
+
+// Duration is a Go-style duration such as "30s", "15m", or "24h".
+// +kubebuilder:validation:Pattern=`^[0-9]+(ns|us|µs|ms|s|m|h)([0-9]+(ns|us|µs|ms|s|m|h))*$`
+type Duration string
 
 // AgentStatus is the phase of the Webhook Relay forwarder node at a given point in time.
 type AgentStatus string
