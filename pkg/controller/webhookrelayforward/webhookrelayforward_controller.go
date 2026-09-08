@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/go-logr/logr"
+
 	forwardv1 "github.com/webhookrelay/webhookrelay-operator/pkg/apis/forward/v1"
 	"github.com/webhookrelay/webhookrelay-operator/pkg/config"
 )
@@ -38,6 +39,8 @@ const (
 	// containerBucketsEnvName specify which buckets the agent should
 	// subscribe to
 	containerBucketsEnvName = "BUCKETS"
+	forwarderLabelKey       = "name"
+	forwarderLabelValue     = "webhookrelay-forwarder"
 )
 
 /**

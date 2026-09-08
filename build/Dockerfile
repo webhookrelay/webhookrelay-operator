@@ -1,4 +1,4 @@
-FROM golang:1.19 as build
+FROM golang:1.27.1 AS build
 COPY . /go/src/github.com/webhookrelay/webhookrelay-operator
 WORKDIR /go/src/github.com/webhookrelay/webhookrelay-operator
 RUN make build
@@ -21,4 +21,3 @@ ENV OPERATOR=/usr/local/bin/webhookrelay-operator
 COPY --from=build /go/src/github.com/webhookrelay/webhookrelay-operator/build/_output/bin/webhookrelay-operator ${OPERATOR}
 
 ENTRYPOINT ["usr/local/bin/webhookrelay-operator"]
-

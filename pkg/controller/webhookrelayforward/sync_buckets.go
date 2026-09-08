@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/logr"
 
 	"github.com/webhookrelay/webhookrelay-go"
+
 	forwardv1 "github.com/webhookrelay/webhookrelay-operator/pkg/apis/forward/v1"
 )
 
