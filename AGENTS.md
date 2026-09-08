@@ -32,8 +32,8 @@ change: a successful reconcile does not by itself prove delivery.
   parent merges.
 - Do not add AI or agent attribution to commits, pull requests, issues,
   comments, or reviews unless explicitly requested.
-- Never commit credentials or print them in logs. Drone credentials belong in
-  `DRONE_TOKEN`; production Relay credentials belong in protected CI secrets.
+- Never commit credentials or print them in logs. Production Relay credentials
+  belong in protected GitHub Actions environment secrets.
 
 ## Validation
 
@@ -54,6 +54,8 @@ make e2e
 - Changes to reconciliation, API types, generated Deployments, the chart, RBAC,
   images, or the K3s harness require the K3s gate. Unit tests or Helm rendering
   alone are insufficient.
+- GitHub Actions is the only repository CI system. Pull-request workflows from
+  outside collaborators require maintainer approval before they run.
 - The production E2E workflow is manual and protected. At present it verifies
   live routing-resource reconciliation and cleanup, but not webhook delivery.
   Do not describe it as a delivery test until the live-delivery PR in the plan

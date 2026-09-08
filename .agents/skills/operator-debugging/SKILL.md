@@ -32,9 +32,8 @@ Deployment. `publicEndpoints` must identify the URL used by delivery tests.
 
 For failed K3s runs, inspect `.test/artifacts/<run-id>/`, especially
 `k3s.log`, `objects.txt`, `events.txt`, `operator.log`, and the captured JSON.
-GitHub logs are available with `gh run view <run-id> --log`. Query Drone only
-with a `DRONE_TOKEN` environment variable; do not paste the token into commands
-that may be recorded.
+GitHub logs are available with `gh run view <run-id> --log`. Outside-collaborator
+workflows may remain queued until a maintainer approves them.
 
 ## 2. Separate reconcile failures from agent failures
 
