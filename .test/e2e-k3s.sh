@@ -291,7 +291,7 @@ spec:
     - name: ${BUCKET_NAME}
       description: ${BUCKET_DESCRIPTION}
       stream: true
-      ephemeral: true
+      ephemeral: false
       largeWebhooks: true
       staticIP: false
       auth:
@@ -402,7 +402,7 @@ exercise_production_reconcile() {
     production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/production-buckets.json"
     if jq -e --arg name "${BUCKET_NAME}" --arg description "${BUCKET_DESCRIPTION}" '
       any(.[]; .name == $name and .description == $description and
-        .stream == true and .ephemeral == true and .large_webhooks == true and .static_ip == false and
+        .stream == true and .ephemeral == false and .large_webhooks == true and .static_ip == false and
         .auth.type == "basic" and .auth.username == "e2e" and ((.auth.password // "") | length > 0) and
         any(.inputs[]?; .name == "e2e-input" and .response_from_output != "" and
           .strip_path_prefix == false and .tls_version == "1.2" and .legacy_tls == false) and

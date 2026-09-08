@@ -68,7 +68,8 @@ request records. Check, in order:
    assert the fixture's known request or response transformation.
 
 If the Relay API rejects `replay_missing`, confirm the output is internal and
-is not selected by any input's `responseFromOutput` (including `anyOutput`).
+is not selected by any input's `responseFromOutput` (including `anyOutput`),
+and confirm its bucket is not ephemeral.
 For HTTP 402, reduce the input to its name first; static response fields and
 other advanced controls can be subscription-dependent.
 

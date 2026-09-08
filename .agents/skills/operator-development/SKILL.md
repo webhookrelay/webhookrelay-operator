@@ -91,7 +91,8 @@ Cover routing fields as table-driven cases where possible: `lockPath`,
 `overrideHeaders`, `disabled`, `timeout`, input response settings,
 `responseFromOutput`, durable delivery, throttling, replay-on-connect, and
 input/output `functionId`. Replay-on-connect belongs on a dedicated internal
-output and cannot share an output used for synchronous input responses.
+output, cannot share an output used for synchronous input responses, and
+cannot be combined with an ephemeral bucket.
 Function cases require a
 dedicated fixture function whose ID is supplied by a protected secret. Assert
 its known transformation at the receiver (or its known response at the

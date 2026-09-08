@@ -197,8 +197,9 @@ preserved.
 
 Replay-on-connect is valid only for an internal output. It cannot be enabled on
 an output selected by `responseFromOutput`, including `anyOutput`; use a
-dedicated output as shown above. Durations use Go syntax such as `30s`, `15m`,
-or `24h`.
+dedicated output as shown above. It is also incompatible with an ephemeral
+bucket because ephemeral delivery state is not retained. Durations use Go
+syntax such as `30s`, `15m`, or `24h`.
 
 ### Field reference
 
