@@ -56,6 +56,8 @@ Use a fresh nonce for every request and have the receiver persist structured
 request records. Check, in order:
 
 1. The caller received a response from the expected public input.
+   If bucket auth is configured, first prove an unauthenticated request is
+   rejected, then send the declared Basic or token credential from its Secret.
 2. The remote output is enabled, internal, and points to the intended Service
    DNS name and port.
 3. The relay-agent pod resolves the Service and can connect to its endpoint.
@@ -67,6 +69,8 @@ request records. Check, in order:
 
 If the Relay API rejects `replay_missing`, confirm the output is internal and
 is not selected by any input's `responseFromOutput` (including `anyOutput`).
+For HTTP 402, reduce the input to its name first; static response fields and
+other advanced controls can be subscription-dependent.
 
 A matching bucket/output in the production API is not evidence of delivery.
 Likewise, a receiver log without a nonce assertion can belong to another retry

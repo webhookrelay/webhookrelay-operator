@@ -1,207 +1,274 @@
 <p align="center">
-  <a href="https://webhookrelay.com" target="_blank"><img width="900"src="https://github.com/webhookrelay/webhookrelay-operator/blob/master/static/operator.png?raw=true"></a>
+  <a href="https://webhookrelay.com"><img width="900" src="https://github.com/webhookrelay/webhookrelay-operator/blob/master/static/operator.png?raw=true" alt="Webhook Relay Kubernetes Operator"></a>
 </p>
 
 # Webhook Relay Kubernetes Operator
 
 [![CI](https://github.com/webhookrelay/webhookrelay-operator/actions/workflows/ci.yml/badge.svg)](https://github.com/webhookrelay/webhookrelay-operator/actions/workflows/ci.yml)
 
-Webhook Relay Operator provides an easy way to receive webhooks to an internal Kubernetes cluster without configuring public IP or load balancer. Perfect for:
-- On-premise deployments 
-- Cloud deployments where public load balancer is not required (single endpoint receiving webhooks and no need to expose the whole server)
-- Edge deployments
-- IoT & Edge computing with https://k3s.io/
+The operator creates Webhook Relay buckets, public inputs, forwarding outputs,
+and an in-cluster relay agent from a namespaced `WebhookRelayForward` resource.
+It lets a public webhook producer reach a Kubernetes Service without a public
+load balancer or inbound firewall rule.
 
-Operator can manage buckets, configure your public endpoints that accept webhooks/API requests and sets up forwarding destinations (where HTTP requests will be sent).
+## Install
 
-## Features
-
-Current operator project scope:
-
-- [x] Deploy webhook forwarding agents with configured buckets
-- [x] Read credentials from secrets and mount secrets to webhookrelayd containers
-- [x] Ensure buckets are created 
-- [x] Ensure inputs are configured (public endpoints)
-- [x] Ensure outputs are configured (forwarding destinations)
-- [x] K8s events on taken actions
-- [x] Updates CR status
-
-### Roadmap
-
-- [ ] Create & manage [Functions](https://webhookrelay.com/v1/guide/functions.html) that transform webhook requests and responses
-- [ ] Manage Function configuration through Kubernetes secrets
-- [ ] Provision separate access tokens for webhookrelayd containers with disabled API access (only subscribe capability). CR should have a finalizer that would ensure that the secret is removed together with the agent configuration.
-- [ ] Deploy Webhook Relay ingress controller (separate CRD)
-- [ ] Expose webhookrelayd agent forwarding metrics
-- [ ] Configure [notification integrations](https://webhookrelay.com/v1/guide/integrations.html) via CRDs
-
-## Installation
-
-Prerequisites:
-
-* [Helm](https://docs.helm.sh/using_helm/#installing-helm)
-* [Webhook Relay account](https://my.webhookrelay.com)
-* Kubernetes
-
-You need to add this Chart repo to Helm:
+Requirements are Kubernetes, Helm 3, and a Webhook Relay access token. The
+operator watches its installation namespace.
 
 ```bash
 helm repo add webhookrelay https://charts.webhookrelay.com
 helm repo update
+helm upgrade --install webhookrelay-operator webhookrelay/webhookrelay-operator \
+  --namespace webhookrelay --create-namespace
 ```
 
-Get access token from [here](https://my.webhookrelay.com/tokens). Once you click on 'Create Token', it will generate it and show a helper to set environment variables:
-
-```
-export RELAY_KEY=*****-****-****-****-*********
-export RELAY_SECRET=**********
-```
-
-Install through Helm:
-
-```bash
-helm upgrade --install webhookrelay-operator --namespace=default webhookrelay/webhookrelay-operator \
-  --set credentials.key=$RELAY_KEY --set credentials.secret=$RELAY_SECRET
-```
-
-## Usage
-
-Operator works as a manager to configure your public endpoints and forwarding destinations. To start receiving webhooks you will need to create a [Custom Resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) (usually called just 'CR'). It's a short yaml file that describes your public endpoint characteristics and specifies where to forward the webhooks:
+Create credentials in the same namespace as the custom resource. Supplying
+credentials through a Secret avoids placing them in Helm command history or
+values files.
 
 ```yaml
-# cr.yaml
-apiVersion: forward.webhookrelay.com/v1
-kind: WebhookRelayForward
-metadata:
-  name: example-forward
-spec:
-  buckets:
-  - name: k8s-operator
-    inputs:
-    - name: public-endpoint
-      description: "Public endpoint, supply this to the webhook producer"
-      responseBody: "OK"
-      responseStatusCode: 200
-    outputs:
-    - name: webhook-receiver
-      lockPath: true  # set to 'false' to reuse any extra path WHR received
-      disabled: false # set to 'true' to disable output
-      destination: http://destination:5050/webhooks
-```
-
-```shell
-kubectl apply -f cr.yaml
-```
-
-Now, to view CR status which will display our public endpoints:
-
-```shell
-# get available CRs
-$ kubectl get webhookrelayforwards.forward.webhookrelay.com
-# get our example forward status
-$ kubectl describe webhookrelayforwards.forward.webhookrelay.com example-forward
-Name:         example-forward
-Namespace:    default
-Labels:       <none>
-Annotations:  API Version:  forward.webhookrelay.com/v1
-Kind:         WebhookRelayForward
-Metadata:
-  Creation Timestamp:  2020-06-18T23:05:33Z
-  Generation:          1
-  Resource Version:    118902
-  Self Link:           /apis/forward.webhookrelay.com/v1/namespaces/default/webhookrelayforwards/example-forward
-  UID:                 998b0fca-f975-40dd-b2b5-91abd1edaee0
-Spec:
-  Buckets:
-    Inputs:
-      Description:           Public endpoint, supply this to the webhook producer
-      Name:                  public-endpoint
-      Response Body:         OK
-      Response Status Code:  200
-    Name:                    k8s-operator
-    Outputs:
-      Destination:       http://destination:5050/webhooks
-      Name:              webhook-receiver
-  Secret Ref Name:       whr-credentials
-  Secret Ref Namespace:  
-Status:
-  Agent Status:  Running
-  Public Endpoints:
-    https://my.webhookrelay.com/v1/webhooks/92582560-738a-4eae-94b1-23299ed20b3c
-  Ready:           true
-  Routing Status:  Configured
-Events:            <none>
-```
-
-Here we can see our public endpoints.
-
-## Advanced Usage (multi-tenant, credentials per CR)
-
-If more than one user is using the operator, it's possible to skip credentials setting during Helm install and just specify the [access token key & secret](https://my.webhookrelay.com/tokens) in the CR itself:
-
-```yaml
-# access_token.yaml
 apiVersion: v1
 kind: Secret
 metadata:
   name: whr-credentials
+  namespace: webhookrelay
 type: Opaque
 stringData:
-  key: XXX    # your access token key
-  secret: YYY # your access token secret
+  key: replace-with-token-key
+  secret: replace-with-token-secret
 ```
 
-Create it:
-
-```shell
-kubectl apply -f access_token.yaml
+```bash
+kubectl apply -f credentials.yaml
 ```
 
-Specify the secret ref in the CR as `secretRefName` and `secretRefNamespace` (this one is optional):
+Cross-namespace Secret reads are rejected. `secretRefNamespace` is deprecated;
+omit it. Install a separate operator in another namespace for tenant isolation.
+
+## Quick start
 
 ```yaml
-# cr.yaml
 apiVersion: forward.webhookrelay.com/v1
 kind: WebhookRelayForward
 metadata:
-  name: example-forward
+  name: github-to-atlantis
+  namespace: webhookrelay
 spec:
-  secretRefName: whr-credentials # Secret 
-  secretRefNamespace: ""
+  secretRefName: whr-credentials
+  websocketTransport: true
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
   buckets:
-  - name: k8s-operator
-    inputs:
-    - name: public-endpoint
-      description: "Public endpoint, supply this to the webhook producer"
-      responseBody: "OK"
-      responseStatusCode: 200
-    outputs:
-    - name: webhook-receiver
-      lockPath: true  # set to 'false' to reuse any extra path WHR received
-      disabled: false # set to 'true' to disable output
-      destination: http://destination:5050/webhooks
-  # Use custom Docker image
-  #image: "quay.io/your-custom/image:latest"
-  # Add custom env variables to the agent container
-  extraEnvVars:
-  - name: WEBSOCKET_TRANSPORT
-    value: "true"
+    - name: github-to-atlantis
+      inputs:
+        - name: github
+      outputs:
+        - name: atlantis
+          destination: http://atlantis.atlantis.svc.cluster.local:4141/events
+          internal: true
+          lockPath: true
+          disabled: false
 ```
 
-Create the CR:
-
-```
-kubectl apply -f cr.yaml
-```
-
-## HTTP Proxy settings
-
-If your outgoing connections are intercepted by an HTTP/HTTPS proxy - you will need to supply connection details with `--set httpProxy` or `--set httpsProxy` Helm values:
+Apply it and read the generated public endpoint:
 
 ```bash
-helm upgrade --install webhookrelay-operator --namespace=default webhookrelay/webhookrelay-operator \
-  --set credentials.key=$RELAY_KEY --set credentials.secret=$RELAY_SECRET \
-  --set httpsProxy="https://example-proxy.com"
+kubectl apply -f forward.yaml
+kubectl -n webhookrelay get webhookrelayforward github-to-atlantis \
+  -o jsonpath='{.status.publicEndpoints[0]}'; echo
 ```
 
-This will set environment variables for the operator and operator will propagate them to the deployed agent.
+`routingStatus` describes remote bucket/input/output reconciliation.
+`agentStatus` and `ready` describe the generated relay-agent Deployment. A
+configured route is not proof of delivery; send a uniquely identifiable test
+webhook and verify it at the destination.
+
+## Complete configuration example
+
+The following example shows the current typed options. Some Webhook Relay
+features depend on the account subscription.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bucket-auth
+  namespace: webhookrelay
+type: Opaque
+stringData:
+  password: replace-with-a-password
+---
+apiVersion: forward.webhookrelay.com/v1
+kind: WebhookRelayForward
+metadata:
+  name: full-example
+  namespace: webhookrelay
+spec:
+  secretRefName: whr-credentials
+  websocketTransport: true
+  image: registry.example.com/webhookrelayd:platform-compatible
+  extraEnvVars:
+    - name: LOG_LEVEL
+      value: debug
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+  buckets:
+    - name: full-example
+      description: Managed by Kubernetes
+      stream: true
+      ephemeral: false
+      largeWebhooks: true
+      staticIP: false
+      auth:
+        type: basic
+        username: webhook-producer
+        secretKeyRef:
+          name: bucket-auth
+          key: password
+      inputs:
+        - name: public-endpoint
+          functionId: 00000000-0000-0000-0000-000000000000
+          responseHeaders:
+            X-Webhook-Receiver:
+              - kubernetes
+          responseStatusCode: 202
+          responseBody: accepted
+          responseFromOutput: application
+          customDomain: example.hooks.webhookrelay.com
+          pathPrefix: /events
+          stripPathPrefix: true
+          tlsVersion: "1.2"
+          legacyTLS: false
+      outputs:
+        - name: application
+          destination: http://receiver.default.svc.cluster.local:8080/hooks
+          functionId: 00000000-0000-0000-0000-000000000000
+          responseFunctionId: 00000000-0000-0000-0000-000000000000
+          internal: true
+          lockPath: true
+          disabled: false
+          timeout: 10
+          retries: 2
+          tlsVerification: true
+          overrideHeaders:
+            X-Managed-By: webhookrelay-operator
+          rules:
+            match:
+              type: value
+              value: push
+              parameter:
+                source: header
+                name: X-GitHub-Event
+          durability:
+            enabled: true
+            schedule: long
+            deadline: 720h
+            handoffAfter: 15m
+          throttle:
+            enabled: true
+            mode: concurrency
+            maxConcurrent: 5
+            maxQueueDepth: 1000
+            deadline: 24h
+        - name: replay-on-connect
+          destination: http://receiver.default.svc.cluster.local:8080/replay
+          internal: true
+          disabled: false
+          replayMissing:
+            enabled: true
+            lookback: 30m
+            limit: 250
+```
+
+For token bucket authentication, use `auth.type: token`, omit `username`, and
+point `secretKeyRef` at the token key. Use `auth.type: none` to explicitly
+remove authentication. If `auth` is omitted, existing remote authentication is
+preserved.
+
+Replay-on-connect is valid only for an internal output. It cannot be enabled on
+an output selected by `responseFromOutput`, including `anyOutput`; use a
+dedicated output as shown above. Durations use Go syntax such as `30s`, `15m`,
+or `24h`.
+
+### Field reference
+
+| Scope | Fields |
+| --- | --- |
+| Agent | `secretRefName`, deprecated `secretRefNamespace`, `image`, `resources`, `extraEnvVars`, `websocketTransport` |
+| Bucket | `name`, `description`, `stream`, `ephemeral`, `largeWebhooks`, `staticIP`, `auth`, `inputs`, `outputs` |
+| Bucket auth | `type` (`none`, `basic`, or `token`), `username`, `secretKeyRef.name`, `secretKeyRef.key` |
+| Input | `name`, `description`, `functionId`, `responseHeaders`, `responseStatusCode`, `responseBody`, `responseFromOutput`, `customDomain`, `pathPrefix`, `stripPathPrefix`, `tlsVersion`, `legacyTLS` |
+| Output | `name`, `description`, `destination`, `functionId`, `responseFunctionId`, `overrideHeaders`, `internal`, `lockPath`, `disabled`, `timeout`, `retries`, `tlsVerification`, `rules`, `durability`, `throttle`, `replayMissing` |
+| Durability | `enabled`, `schedule` (`seconds`, `medium`, `long`, or `custom`), `customDelays`, `deadline`, `handoffAfter` |
+| Throttle | `enabled`, `mode` (`rate` or `concurrency`), `rate`, `interval` (`second`, `minute`, or `hour`), `maxConcurrent`, `maxQueueDepth`, `deadline` |
+| Replay | `enabled`, `lookback`, `limit` |
+
+## `functionId` migration
+
+Use `functionId` for both inputs and outputs. The old output-only
+`function_id` spelling remains readable during migration but is deprecated. If
+both properties are present they must have the same value. Update manifests to
+`functionId`, apply them, and then remove `function_id`.
+
+## Agent transport, resources, and ARM
+
+Set `websocketTransport: true` when outbound gRPC is restricted; the agent then
+uses WebSocket over port 443. The typed field takes precedence over a legacy
+`WEBSOCKET_TRANSPORT` entry in `extraEnvVars`.
+
+`spec.image` controls the relay-agent image, while the Helm `image.*` values
+control the operator image. The currently published default `webhookrelayd`
+images are amd64-only. On ARM nodes, set `spec.image` to an agent image that
+supports the node architecture. Publishing an official multi-architecture
+agent image is tracked separately; the operator cannot make an amd64-only image
+run natively on ARM.
+
+## Troubleshooting
+
+- HTTP 402 from the Relay API means the manifest requested a feature that is
+  unavailable on the account subscription. Start with the minimal quick-start
+  input. In particular, remove `responseBody`, `responseStatusCode`, and
+  `responseHeaders` before testing, then add static responses, custom domains,
+  advanced TLS, large webhooks, static IP, durability, or other paid controls
+  one at a time.
+- `routingStatus: Failed` includes API or validation details. Inspect it with
+  `kubectl -n <namespace> describe webhookrelayforward <name>` and check the
+  operator logs.
+- `exec format error` in the agent pod means its image architecture does not
+  match the node. Set `spec.image` to a compatible build.
+- If the agent cannot connect over gRPC, set `websocketTransport: true` and
+  inspect the generated Deployment and agent logs.
+- Bucket authentication applies at the public input. HTTP Basic clients must
+  send the configured username/password; token clients must send the token.
+
+## Development and tests
+
+Repository guidance is in [AGENTS.md](AGENTS.md), with focused operator
+development and debugging skills under `.agents/skills`. The normal checks are:
+
+```bash
+make go-gen
+make test
+make golangci-lint lint
+make build
+make e2e
+```
+
+`make e2e` creates an isolated K3s server and requires Linux, Docker, and
+passwordless sudo. Pull requests use GitHub Actions. The protected production
+workflow additionally creates uniquely owned Relay resources, delivers real
+webhooks into the K3s receiver, and removes only the exact resources it owns.
+
+## License
+
+See [LICENSE](LICENSE).

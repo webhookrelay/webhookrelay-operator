@@ -27,6 +27,7 @@ AGENT_IMAGE="${WHR_E2E_AGENT_IMAGE:-webhookrelay/webhookrelayd-ubi8:latest}"
 FUNCTION_ID="${WHR_E2E_FUNCTION_ID:-}"
 BUCKET_NAME="operator-e2e-${RUN_ID}"
 BUCKET_DESCRIPTION="Webhook Relay operator production e2e run ${RUN_ID}"
+BUCKET_AUTH_PASSWORD="auth-${RUN_ID}"
 PRODUCTION_RESOURCES_STARTED=false
 TEST_STATUS=0
 
@@ -265,7 +266,8 @@ apply_production_forward() {
   [[ -z "${output_function_id}" ]] || output_function_yaml="          functionId: ${output_function_id}"
 
   umask 077
-  printf 'key=%s\nsecret=%s\n' "${WHR_E2E_RELAY_KEY}" "${WHR_E2E_RELAY_SECRET}" >"${credentials_file}"
+  printf 'key=%s\nsecret=%s\nbucket-password=%s\n' \
+    "${WHR_E2E_RELAY_KEY}" "${WHR_E2E_RELAY_SECRET}" "${BUCKET_AUTH_PASSWORD}" >"${credentials_file}"
   kubectl -n "${NAMESPACE}" create secret generic e2e-credentials \
     --from-env-file="${credentials_file}" --dry-run=client -o yaml | kubectl apply -f -
   kubectl apply -f - <<EOF
@@ -288,6 +290,16 @@ spec:
   buckets:
     - name: ${BUCKET_NAME}
       description: ${BUCKET_DESCRIPTION}
+      stream: true
+      ephemeral: true
+      largeWebhooks: true
+      staticIP: false
+      auth:
+        type: basic
+        username: e2e
+        secretKeyRef:
+          name: e2e-credentials
+          key: bucket-password
       inputs:
         - name: e2e-input
           description: ${BUCKET_DESCRIPTION}
@@ -390,6 +402,8 @@ exercise_production_reconcile() {
     production_api "https://my.webhookrelay.com/v1/buckets" >"${RUN_DIR}/production-buckets.json"
     if jq -e --arg name "${BUCKET_NAME}" --arg description "${BUCKET_DESCRIPTION}" '
       any(.[]; .name == $name and .description == $description and
+        .stream == true and .ephemeral == true and .large_webhooks == true and .static_ip == false and
+        .auth.type == "basic" and .auth.username == "e2e" and ((.auth.password // "") | length > 0) and
         any(.inputs[]?; .name == "e2e-input" and .response_from_output != "" and
           .strip_path_prefix == false and .tls_version == "1.2" and .legacy_tls == false) and
         any(.outputs[]?; .name == "e2e-output" and .disabled == false and .internal == true and
@@ -429,6 +443,7 @@ exercise_production_reconcile() {
   done
   [[ "${public_endpoint}" == https://* ]] || fail "the CR did not publish a production input endpoint"
 
+  assert_bucket_auth_required "${public_endpoint}"
   assert_live_delivery "${public_endpoint}" baseline baseline ""
 
   log "testing input function ID with live delivery"
@@ -441,6 +456,15 @@ exercise_production_reconcile() {
   wait_for_production_update "${bucket_id}" "${input_id}" "${output_id}" "${replay_output_id}" "" "${FUNCTION_ID}" output-function
   assert_live_delivery "${public_endpoint}" output-function output-function applied
   log "production reconciliation and live delivery passed"
+}
+
+assert_bucket_auth_required() {
+  local public_endpoint="$1"
+  local response_status
+  response_status="$(curl --show-error --silent --output /dev/null --write-out '%{http_code}' \
+    --request POST "${public_endpoint}/unauthenticated")"
+  [[ "${response_status}" == "401" ]] || fail "bucket authentication returned HTTP ${response_status}, expected 401"
+  log "bucket authentication rejected an unauthenticated webhook"
 }
 
 wait_for_production_update() {
@@ -484,6 +508,7 @@ assert_live_delivery() {
   local receiver_record="${ARTIFACT_DIR}/${case_name}-receiver.json"
 
   response_status="$(curl --show-error --silent \
+    --user "e2e:${BUCKET_AUTH_PASSWORD}" \
     --dump-header "${response_headers_file}" --output "${response_body_file}" \
     --write-out '%{http_code}' --request POST \
     --header 'Content-Type: application/json' \

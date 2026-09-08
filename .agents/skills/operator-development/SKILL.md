@@ -42,6 +42,13 @@ read, and never log Secret data. For relay-agent settings, prefer a typed CRD
 field over a magic `extraEnvVars` entry; define precedence explicitly and test
 the complete generated Deployment, including image and resources.
 
+Bucket Basic passwords and tokens must use a same-namespace `secretKeyRef`;
+never add plaintext credential fields to the CRD. Treat an omitted `auth` block
+as unmanaged compatibility state and `auth.type: none` as an explicit request
+to remove authentication. Preserve server-owned auth metadata during updates,
+and test both unauthenticated rejection and authenticated delivery in the
+protected production profile.
+
 ## Development loop
 
 Use focused package tests during implementation:
