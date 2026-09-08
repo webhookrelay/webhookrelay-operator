@@ -27,6 +27,7 @@ AGENT_IMAGE="${WHR_E2E_AGENT_IMAGE:-webhookrelay/webhookrelayd-ubi8:latest}"
 FUNCTION_ID="${WHR_E2E_FUNCTION_ID:-}"
 BUCKET_NAME="operator-e2e-${RUN_ID}"
 BUCKET_DESCRIPTION="Webhook Relay operator production e2e run ${RUN_ID}"
+PRODUCTION_RESOURCES_STARTED=false
 TEST_STATUS=0
 
 log() {
@@ -103,16 +104,9 @@ start_k3s() {
   # shellcheck disable=SC2024
   sudo env K3S_DATA_DIR="${K3S_DATA_DIR}" \
     setsid "${K3S_BIN}" server --config "${K3S_CONFIG}" >"${K3S_LOG}" 2>&1 &
-
-  for _ in $(seq 1 30); do
-    pid="$(sudo pgrep -f -x "${K3S_BIN} server --config ${K3S_CONFIG}" || true)"
-    if [[ "${pid}" =~ ^[0-9]+$ ]]; then
-      printf '%s\n' "${pid}" >"${K3S_PID_FILE}"
-      break
-    fi
-    sleep 1
-  done
-  [[ -s "${K3S_PID_FILE}" ]] || fail "could not record the task-owned k3s process"
+  pid=$!
+  [[ "${pid}" =~ ^[0-9]+$ ]] || fail "could not record the task-owned k3s process"
+  printf '%s\n' "${pid}" >"${K3S_PID_FILE}"
 
   for _ in $(seq 1 120); do
     if [[ -s "${KUBECONFIG}" ]] && sudo env K3S_DATA_DIR="${K3S_DATA_DIR}" \
@@ -295,6 +289,7 @@ ${input_function_yaml}
             X-WHR-E2E-Override: ${override_value}
 ${output_function_yaml}
 EOF
+  PRODUCTION_RESOURCES_STARTED=true
 }
 
 production_api() {
@@ -465,6 +460,7 @@ assert_live_delivery() {
 cleanup_production_resources() {
   local bucket_count bucket_id
   [[ "${PRODUCTION_MODE}" == "true" ]] || return 0
+  [[ "${PRODUCTION_RESOURCES_STARTED}" == "true" ]] || return 0
   [[ -s "${RUN_DIR}/production-curl.conf" ]] || return 0
   # Stop reconciliation before deleting remote state. Otherwise the controller's
   # five-second requeue can recreate the bucket between deletion and k3s teardown.
