@@ -3,6 +3,8 @@ GIT_REVISION	= $(shell git rev-parse --short HEAD)
 VERSION		?= $(shell git describe --tags --abbrev=0)
 OPERATOR_PREVIOUS_VERSION	?= $(shell git describe --abbrev=0 --tags $(VERSION)^)
 OPERATOR_IMAGE ?= webhookrelay/webhookrelay-operator:test
+OPERATOR_VERSION ?= 0.8.0
+CHART_VERSION ?= 0.7.0
 
 GO_ENV = GOOS=linux CGO_ENABLED=0
 GO_BUILD_CMD = go build
@@ -46,6 +48,18 @@ test:
 .PHONY: e2e
 e2e:
 	./.test/e2e-k3s.sh
+
+.PHONY: chart-package chart-release-check chart-release-test
+chart-package:
+	OPERATOR_VERSION=$(OPERATOR_VERSION) CHART_VERSION=$(CHART_VERSION) \
+		HELM_BIN=$${HELM_BIN:-helm} ./.scripts/chart-release.sh package
+
+chart-release-check:
+	OPERATOR_VERSION=$(OPERATOR_VERSION) CHART_VERSION=$(CHART_VERSION) \
+		HELM_BIN=$${HELM_BIN:-helm} ./.scripts/chart-release.sh verify-remote
+
+chart-release-test:
+	HELM_BIN=$${HELM_BIN:-helm} ./.test/chart-release.sh
 
 ## Start local Webhook Relay operator
 local-run:

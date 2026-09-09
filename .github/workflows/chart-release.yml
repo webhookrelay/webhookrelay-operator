@@ -1,0 +1,153 @@
+name: Helm Chart Release
+
+on:
+  workflow_call:
+    inputs:
+      operator_version:
+        description: Operator image version referenced by the chart
+        required: true
+        type: string
+      chart_version:
+        description: Immutable Helm chart version
+        required: true
+        type: string
+      publish:
+        description: Publish after validation and release-environment approval
+        required: false
+        default: false
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      operator_version:
+        description: Operator image version referenced by the chart
+        required: true
+        default: 0.8.0
+        type: string
+      chart_version:
+        description: Immutable Helm chart version
+        required: true
+        default: 0.7.0
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  package:
+    name: Package and validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.27.1"
+
+      - name: Install checksum-pinned Helm
+        run: ./.test/install-helm.sh .test/helm
+
+      - name: Build reproducible chart artifact
+        env:
+          OPERATOR_VERSION: ${{ inputs.operator_version }}
+          CHART_VERSION: ${{ inputs.chart_version }}
+          HELM_BIN: .test/helm
+        run: |
+          go test ./.scripts
+          ./.scripts/chart-release.sh package
+          ./.scripts/chart-release.sh verify-remote
+
+      - name: Upload candidate artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: helm-chart-${{ inputs.chart_version }}
+          path: |
+            dist/chart/webhookrelay-operator-${{ inputs.chart_version }}.tgz
+            dist/chart/webhookrelay-operator-${{ inputs.chart_version }}.tgz.sha256
+            dist/chart/release-metadata.json
+          if-no-files-found: error
+          retention-days: 14
+
+  lifecycle:
+    name: Test exact chart artifact in k3s
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.27.1"
+
+      - name: Download validated artifact
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: helm-chart-${{ inputs.chart_version }}
+          path: validated
+
+      - name: Run packaged chart lifecycle
+        env:
+          WHR_E2E_CANDIDATE_CHART: ${{ github.workspace }}/validated/webhookrelay-operator-${{ inputs.chart_version }}.tgz
+        run: make e2e
+
+      - name: Upload failure diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: chart-lifecycle-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .test/artifacts/
+          if-no-files-found: warn
+          retention-days: 7
+
+  publish:
+    name: Publish immutable chart
+    if: inputs.publish == true
+    needs: [package, lifecycle]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Download validated artifact
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: helm-chart-${{ inputs.chart_version }}
+          path: validated
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.27.1"
+
+      - name: Authenticate to Google Cloud without a stored key
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+        with:
+          version: 577.0.0
+
+      - name: Install checksum-pinned Helm
+        run: ./.test/install-helm.sh .test/helm
+
+      - name: Publish with immutable-object preconditions
+        env:
+          OPERATOR_VERSION: ${{ inputs.operator_version }}
+          CHART_VERSION: ${{ inputs.chart_version }}
+          HELM_BIN: .test/helm
+          CHART_BUCKET: ${{ vars.CHART_BUCKET }}
+          VALIDATED_ARTIFACT: validated/webhookrelay-operator-${{ inputs.chart_version }}.tgz
+        run: ./.scripts/chart-release.sh publish

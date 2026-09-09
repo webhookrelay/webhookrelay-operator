@@ -46,10 +46,14 @@ jobs:
       - name: Install Helm
         run: ./.test/install-helm.sh .test/helm
 
-      - name: Lint and render chart
+      - name: Lint, render, and package chart
         run: |
+          go test ./.scripts
           .test/helm lint charts/webhookrelay-operator
           .test/helm template webhookrelay-operator charts/webhookrelay-operator >/dev/null
+          make chart-package HELM_BIN=.test/helm
+          make chart-release-check HELM_BIN=.test/helm
+          make chart-release-test HELM_BIN=.test/helm
 
   e2e:
     name: End-to-End and Helm Lifecycle (k3s)

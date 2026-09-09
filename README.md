@@ -290,6 +290,8 @@ make e2e
 passwordless sudo. Pull requests use GitHub Actions. The protected production
 workflow additionally creates uniquely owned Relay resources, delivers real
 webhooks into the K3s receiver, and removes only the exact resources it owns.
+Maintainers should follow the [versioned release process](docs/releasing.md);
+chart publication is reproducible, collision-safe, and separately approved.
 
 ## License
 
