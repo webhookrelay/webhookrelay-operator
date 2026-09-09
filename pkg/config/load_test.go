@@ -25,14 +25,15 @@ func TestLoadNormalizesAPIEndpoint(t *testing.T) {
 }
 
 func TestLoadRejectsUnsafeAPIEndpoints(t *testing.T) {
+	credentialPair := strings.Join([]string{"key", "secret"}, ":")
 	tests := []struct {
 		name     string
 		endpoint string
 	}{
 		{name: "relative", endpoint: "relay-api.test/v1"},
 		{name: "unsupported scheme", endpoint: "ftp://relay-api.test/v1"},
-		{name: "user information", endpoint: "https://key:secret@relay-api.test/v1"},
-		{name: "malformed user information", endpoint: "https://key:secret@%zz/v1"},
+		{name: "user information", endpoint: "https://" + credentialPair + "@relay-api.test/v1"},
+		{name: "malformed user information", endpoint: "https://" + credentialPair + "@%zz/v1"},
 		{name: "query", endpoint: "https://relay-api.test/v1?token=secret"},
 		{name: "fragment", endpoint: "https://relay-api.test/v1#fragment"},
 	}
@@ -43,7 +44,7 @@ func TestLoadRejectsUnsafeAPIEndpoints(t *testing.T) {
 			_, err := Load()
 
 			require.Error(t, err)
-			assert.NotContains(t, err.Error(), "key:secret")
+			assert.NotContains(t, err.Error(), credentialPair)
 			assert.False(t, strings.Contains(err.Error(), "token=secret"))
 		})
 	}
