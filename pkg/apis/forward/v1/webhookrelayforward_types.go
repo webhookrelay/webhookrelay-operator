@@ -22,7 +22,7 @@ type WebhookRelayForwardSpec struct {
 	SecretRefNamespace string `json:"secretRefNamespace,omitempty"`
 
 	// Image is the relay agent container. It defaults to the operator's configured
-	// image (webhookrelay/webhookrelayd-ubi8:latest in the shipped deployment).
+	// image (webhookrelay/webhookrelayd-ubi8:1.37.0 in the shipped deployment).
 	Image string `json:"image,omitempty"`
 
 	// Buckets to manage and subscribe to. Each CR can control one or more buckets. Buckets can be inspected

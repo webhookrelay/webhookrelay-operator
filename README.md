@@ -228,8 +228,8 @@ uses WebSocket over port 443. The typed field takes precedence over a legacy
 `WEBSOCKET_TRANSPORT` entry in `extraEnvVars`.
 
 `spec.image` controls the relay-agent image, while the Helm `image.*` values
-control the operator image. The default `webhookrelay/webhookrelayd:latest` and
-`webhookrelay/webhookrelayd-ubi8:latest` images publish `linux/amd64` and
+control the operator image. The `webhookrelay/webhookrelayd:1.37.0` and
+`webhookrelay/webhookrelayd-ubi8:1.37.0` images publish `linux/amd64` and
 `linux/arm64/v8` variants, so Kubernetes selects the correct agent image on
 either architecture. Use `spec.image` only when selecting another relay-agent
 repository or tag.

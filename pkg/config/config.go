@@ -3,7 +3,7 @@ package config
 type (
 	// Config stores the configuration settings.
 	Config struct {
-		Image string `default:"webhookrelay/webhookrelayd-ubi8:latest"`
+		Image string `default:"webhookrelay/webhookrelayd-ubi8:1.37.0"`
 
 		// Relay allows setting up relay token key & secret on the operator itself
 		// rather than using per CR key & secret

@@ -7,6 +7,11 @@ on:
         description: Type production to allow temporary routing resources
         required: true
         type: string
+      agent_image:
+        description: Relay-agent image to validate
+        required: false
+        default: webhookrelay/webhookrelayd-ubi8:1.37.0
+        type: string
 
 permissions:
   contents: read
@@ -24,6 +29,7 @@ jobs:
       WHR_E2E_RELAY_KEY: ${{ secrets.WHR_E2E_RELAY_KEY }}
       WHR_E2E_RELAY_SECRET: ${{ secrets.WHR_E2E_RELAY_SECRET }}
       WHR_E2E_FUNCTION_ID: ${{ vars.WHR_E2E_FUNCTION_ID }}
+      WHR_E2E_AGENT_IMAGE: ${{ inputs.agent_image }}
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
