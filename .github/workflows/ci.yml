@@ -52,9 +52,9 @@ jobs:
           .test/helm template webhookrelay-operator charts/webhookrelay-operator >/dev/null
 
   e2e:
-    name: End-to-End Tests (k3s)
+    name: End-to-End and Helm Lifecycle (k3s)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5

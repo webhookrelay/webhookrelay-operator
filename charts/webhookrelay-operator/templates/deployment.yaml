@@ -5,7 +5,7 @@ metadata:
   labels:
     {{- include "webhookrelay-operator.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   # The pre-modernization operator used a ConfigMap lock that cannot safely
   # overlap with the standard Lease lock during a rolling update.
   strategy:

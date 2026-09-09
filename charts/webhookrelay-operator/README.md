@@ -14,7 +14,43 @@ helm upgrade --install webhookrelay-operator webhookrelay/webhookrelay-operator 
   --namespace webhookrelay --create-namespace
 ```
 
-The CRD in the chart's `crds/` directory is installed automatically by Helm 3.
+The CRD in the chart's `crds/` directory is installed automatically on the
+first Helm install. Helm deliberately does not upgrade or delete CRDs. Pin one
+chart version and use it for both the CRD and operator upgrade:
+
+```bash
+CHART_VERSION=0.6.0
+helm show crds webhookrelay/webhookrelay-operator \
+  --version "${CHART_VERSION}" | kubectl apply -f -
+helm upgrade webhookrelay-operator webhookrelay/webhookrelay-operator \
+  --namespace webhookrelay --version "${CHART_VERSION}" --wait
+```
+
+Uninstalling the chart leaves the CRD and all `WebhookRelayForward` objects in
+place. Delete those objects before uninstalling if their owned relay-agent
+Deployments should be garbage-collected. Delete the CRD separately only when
+you intend to delete every `WebhookRelayForward` object cluster-wide. A
+controller-created leader-election Lease can also remain after uninstall. It
+is harmless without a running operator and can be deleted after confirming no
+operator instance uses it. Older releases used a transient ConfigMap lock.
+
+A Helm rollback rolls back the operator resources, not the CRD. Before rolling
+back across operator generations, ensure the existing custom resources use
+only fields understood by the older controller; remove new-only fields before
+the old controller is restarted. Inspect the target revision, stop the current
+controller completely, and then roll back:
+
+```bash
+helm history webhookrelay-operator --namespace webhookrelay
+kubectl -n webhookrelay scale deployment/webhookrelay-operator --replicas=0
+kubectl -n webhookrelay wait --for=delete pod \
+  -l app.kubernetes.io/instance=webhookrelay-operator --timeout=2m
+helm rollback webhookrelay-operator REVISION \
+  --namespace webhookrelay --wait --timeout=3m
+```
+
+The newer CRD remains installed; Helm does not roll its schema back.
+
 Create the Relay access-token Secret and each `WebhookRelayForward` in the same
 namespace. Per-resource `secretRefNamespace` is deprecated and cannot grant
 cross-namespace access.
