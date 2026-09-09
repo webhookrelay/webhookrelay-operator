@@ -19,7 +19,7 @@ first Helm install. Helm deliberately does not upgrade or delete CRDs. Pin one
 chart version and use it for both the CRD and operator upgrade:
 
 ```bash
-CHART_VERSION=0.6.0
+CHART_VERSION=0.7.0
 helm show crds webhookrelay/webhookrelay-operator \
   --version "${CHART_VERSION}" | kubectl apply -f -
 helm upgrade webhookrelay-operator webhookrelay/webhookrelay-operator \
@@ -73,7 +73,7 @@ line values can be retained in shell history and Helm release data.
 | --- | --- | --- |
 | `replicaCount` | Operator replicas | `1` |
 | `image.repository` | Operator image repository | `webhookrelay/webhookrelay-operator` |
-| `image.tag` | Operator image tag | `0.7.0` |
+| `image.tag` | Operator image tag | `0.8.0` |
 | `image.pullPolicy` | Operator image pull policy | `Always` |
 | `credentials.key` | Optional operator-wide Relay token key | empty |
 | `credentials.secret` | Optional operator-wide Relay token secret | empty |
