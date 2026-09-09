@@ -923,10 +923,10 @@ exercise_helm_lifecycle() {
   helm uninstall webhookrelay-operator --namespace "${NAMESPACE}" --wait --timeout 120s
   kubectl -n "${NAMESPACE}" get lease/webhookrelay-operator-lock >/dev/null || \
     fail "expected controller-created Lease retention was not observed"
-  kubectl -n "${NAMESPACE}" get configmap/webhookrelay-operator-lock >/dev/null || \
-    fail "expected legacy controller-created ConfigMap retention was not observed"
-  kubectl -n "${NAMESPACE}" delete lease/webhookrelay-operator-lock \
-    configmap/webhookrelay-operator-lock --ignore-not-found >/dev/null
+  if kubectl -n "${NAMESPACE}" get configmap/webhookrelay-operator-lock >/dev/null 2>&1; then
+    fail "legacy controller ConfigMap lock was unexpectedly retained"
+  fi
+  kubectl -n "${NAMESPACE}" delete lease/webhookrelay-operator-lock >/dev/null
   kubectl get crd webhookrelayforwards.forward.webhookrelay.com >/dev/null
   for resource in \
     deployment/webhookrelay-operator \

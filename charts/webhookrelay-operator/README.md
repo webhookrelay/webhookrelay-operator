@@ -30,9 +30,9 @@ Uninstalling the chart leaves the CRD and all `WebhookRelayForward` objects in
 place. Delete those objects before uninstalling if their owned relay-agent
 Deployments should be garbage-collected. Delete the CRD separately only when
 you intend to delete every `WebhookRelayForward` object cluster-wide. A
-controller-created leader-election Lease can also remain after uninstall; old
-releases used a ConfigMap lock. Either lock is harmless without a running
-operator and can be deleted after confirming no operator instance uses it.
+controller-created leader-election Lease can also remain after uninstall. It
+is harmless without a running operator and can be deleted after confirming no
+operator instance uses it. Older releases used a transient ConfigMap lock.
 
 A Helm rollback rolls back the operator resources, not the CRD. Before rolling
 back across operator generations, ensure the existing custom resources use

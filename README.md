@@ -25,9 +25,9 @@ helm upgrade --install webhookrelay-operator webhookrelay/webhookrelay-operator 
 
 Helm installs the CRD on the first install but does not upgrade or delete it.
 Use the same explicitly pinned chart version to apply the target CRD and upgrade
-the operator. A Helm uninstall retains the CRD and custom resources, plus a
-controller-created leader-election lock; delete custom resources first if their
-owned agent Deployments should be garbage-collected. Rollbacks only revert the
+the operator. A Helm uninstall retains the CRD and custom resources, plus the
+controller-created leader-election Lease; delete custom resources first if
+their owned agent Deployments should be garbage-collected. Rollbacks only revert the
 operator resources, so remove new-only fields, scale the current operator to
 zero, and wait for its pods to terminate before restarting an older controller.
 The [chart lifecycle guidance](charts/webhookrelay-operator/README.md) provides
