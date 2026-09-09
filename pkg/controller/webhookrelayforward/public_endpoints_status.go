@@ -20,11 +20,12 @@ func (r *ReconcileWebhookRelayForward) shouldUpdatePublicEndpoints(instance *for
 	}
 
 	desiredEndpoints := computePublicEndpoints(instance, r.apiClient.bucketsCache)
+	currentEndpoints := append([]string(nil), instance.Status.PublicEndpoints...)
 
 	sort.Strings(desiredEndpoints)
-	sort.Strings(instance.Status.PublicEndpoints)
+	sort.Strings(currentEndpoints)
 
-	if !sliceEquals(desiredEndpoints, instance.Status.PublicEndpoints) {
+	if !sliceEquals(desiredEndpoints, currentEndpoints) {
 		patch := instance.DeepCopy()
 		patch.Status.PublicEndpoints = desiredEndpoints
 		return patch, true

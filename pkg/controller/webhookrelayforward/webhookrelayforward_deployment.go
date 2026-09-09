@@ -23,6 +23,10 @@ func (r *ReconcileWebhookRelayForward) checkDeployment(cr *forwardv1.WebhookRela
 	// 2. Environment configuration (secrets, buckets)
 	// 3. TODO: check resource limits
 	desiredDeployment := r.newDeploymentForCR(cr)
+	if !reflect.DeepEqual(current.Spec.Replicas, desiredDeployment.Spec.Replicas) {
+		patched.Spec.Replicas = desiredDeployment.Spec.Replicas
+		equal = false
+	}
 
 	if len(current.Spec.Template.Spec.Containers) != len(desiredDeployment.Spec.Template.Spec.Containers) {
 		patched.Spec.Template.Spec.Containers = desiredDeployment.Spec.Template.Spec.Containers
@@ -42,7 +46,7 @@ func (r *ReconcileWebhookRelayForward) checkDeployment(cr *forwardv1.WebhookRela
 		patched.Spec.Template.Spec = desiredDeployment.Spec.Template.Spec
 	}
 
-	return
+	return patched, equal
 }
 
 func containersEqual(r, l *corev1.Container) bool {
