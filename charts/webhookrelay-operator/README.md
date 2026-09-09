@@ -37,7 +37,7 @@ line values can be retained in shell history and Helm release data.
 | --- | --- | --- |
 | `replicaCount` | Operator replicas | `1` |
 | `image.repository` | Operator image repository | `webhookrelay/webhookrelay-operator` |
-| `image.tag` | Operator image tag | `0.6.0` |
+| `image.tag` | Operator image tag | `0.7.0` |
 | `image.pullPolicy` | Operator image pull policy | `Always` |
 | `credentials.key` | Optional operator-wide Relay token key | empty |
 | `credentials.secret` | Optional operator-wide Relay token secret | empty |

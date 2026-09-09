@@ -492,7 +492,7 @@ spec:
               image:
                 description: |-
                   Image is the relay agent container. It defaults to the operator's configured
-                  image (webhookrelay/webhookrelayd-ubi8:latest in the shipped deployment).
+                  image (webhookrelay/webhookrelayd-ubi8:1.37.0 in the shipped deployment).
                 type: string
               resources:
                 description: Resources is to set the resource requirements of the
