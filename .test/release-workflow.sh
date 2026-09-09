@@ -33,6 +33,7 @@ assert_needs release '[image, promote]'
 job_block release | grep -Fq 'gh release create'
 job_block promote | grep -Fq 'image-release.sh promote-latest'
 job_block chart-publication | grep -Fq 'id-token: write'
+job_block chart-publication | grep -Fq 'actions: read'
 [[ "$(grep -c -- '--rawfile body' .scripts/verify-release-state.sh)" == "1" ]]
 [[ "$(job_block release | grep -c 'verify-release-state.sh')" == "2" ]]
 notes_fixture="$(mktemp)"
