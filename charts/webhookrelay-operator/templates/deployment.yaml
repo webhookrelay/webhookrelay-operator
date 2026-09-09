@@ -61,6 +61,8 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: {{ include "webhookrelay-operator.fullname" . }}
+            - name: WHR_API_ENDPOINT_URL
+              value: {{ .Values.apiEndpointURL | quote }}
 {{- if and .Values.credentials.key .Values.credentials.secret }}
             # Set access token secret
             - name: RELAY_KEY

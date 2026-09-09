@@ -4,6 +4,9 @@ type (
 	// Config stores the configuration settings.
 	Config struct {
 		Image string `default:"webhookrelay/webhookrelayd-ubi8:1.37.0"`
+		// APIEndpointURL is an operator-admin-controlled Webhook Relay API base
+		// URL. It is intentionally not configurable from a custom resource.
+		APIEndpointURL string `envconfig:"API_ENDPOINT_URL" default:"https://my.webhookrelay.com/v1"`
 
 		// Relay allows setting up relay token key & secret on the operator itself
 		// rather than using per CR key & secret

@@ -42,6 +42,7 @@ line values can be retained in shell history and Helm release data.
 | `credentials.key` | Optional operator-wide Relay token key | empty |
 | `credentials.secret` | Optional operator-wide Relay token secret | empty |
 | `httpsProxy` | HTTPS proxy used by the operator and propagated to agents | empty |
+| `apiEndpointURL` | Trusted operator-wide Relay API base URL | `https://my.webhookrelay.com/v1` |
 | `imagePullSecrets` | Image pull Secret references | `[]` |
 | `serviceAccount.create` | Create the ServiceAccount | `true` |
 | `serviceAccount.name` | ServiceAccount name | `webhookrelay-operator` |

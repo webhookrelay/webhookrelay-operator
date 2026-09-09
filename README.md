@@ -214,6 +214,12 @@ syntax such as `30s`, `15m`, or `24h`.
 | Throttle | `enabled`, `mode` (`rate` or `concurrency`), `rate`, `interval` (`second`, `minute`, or `hour`), `maxConcurrent`, `maxQueueDepth`, `deadline` |
 | Replay | `enabled`, `lookback`, `limit` |
 
+The operator API endpoint is an administrator setting, not a CRD field. The
+Helm value `apiEndpointURL` (environment variable `WHR_API_ENDPOINT_URL`)
+defaults to `https://my.webhookrelay.com/v1`. Because the operator sends Relay
+credentials to this endpoint, configure only an absolute HTTP(S) URL that you
+administer; URL user information, query parameters, and fragments are rejected.
+
 ## `functionId` migration
 
 Use `functionId` for both inputs and outputs. The old output-only
