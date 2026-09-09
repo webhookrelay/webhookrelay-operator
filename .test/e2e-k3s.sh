@@ -807,6 +807,7 @@ exercise_helm_lifecycle() {
   log "testing Helm uninstall with CRD retention"
   helm uninstall webhookrelay-operator --namespace "${NAMESPACE}" --wait --timeout 120s
   kubectl get crd webhookrelayforwards.forward.webhookrelay.com >/dev/null
+  kubectl -n "${NAMESPACE}" get lease/webhookrelay-operator-lock >/dev/null
   for resource in \
     deployment/webhookrelay-operator \
     serviceaccount/webhookrelay-operator \
@@ -817,6 +818,9 @@ exercise_helm_lifecycle() {
     fi
   done
 
+  log "removing the retained candidate CRD before the published-chart install"
+  remove_crd_from_disposable_cluster
+
   log "downloading checksum-pinned published chart 0.4.1"
   curl --fail --location --show-error --silent --output "${OLD_CHART}" \
     https://charts.webhookrelay.com/webhookrelay-operator-0.4.1.tgz
@@ -825,8 +829,14 @@ exercise_helm_lifecycle() {
     "${OLD_CHART}" | sha256sum --check --strict -
 
   helm install webhookrelay-operator "${OLD_CHART}" --namespace "${NAMESPACE}" \
-    --wait --timeout 180s
+    --wait --timeout 180s --set-string httpsProxy=http://127.0.0.1:1
   assert_helm_revision 1
+  kubectl get crd webhookrelayforwards.forward.webhookrelay.com -o json | jq -e '
+    .spec.versions[] | select(.name == "v1") |
+    .schema.openAPIV3Schema.properties.spec.properties.buckets.items.properties.outputs.items.properties as $output |
+    ($output.function_id.type == "string") and ($output | has("functionId") | not) and
+    (.schema.openAPIV3Schema.properties.status.properties | has("conditions") | not)
+  ' >/dev/null || fail "published chart did not install its expected legacy CRD schema"
   old_image="$(kubectl -n "${NAMESPACE}" get deployment/webhookrelay-operator \
     -o jsonpath='{.spec.template.spec.containers[0].image}')"
   [[ "${old_image}" == "webhookrelay/webhookrelay-operator:0.6.0" ]] || \
@@ -863,6 +873,11 @@ exercise_helm_lifecycle() {
     "00000000-0000-0000-0000-000000000000" ]] || fail "legacy function_id was not retained"
   wait_for_isolated_routing_status Configured
   kubectl -n "${NAMESPACE}" rollout status deployment/e2e-forward-whr-deployment --timeout=120s
+  fake_api_state | jq -e --arg name "${BUCKET_NAME}-lifecycle" '
+    any(.buckets[]; .name == $name and
+      any(.outputs[]; .name == "legacy-output" and
+        .function_id == "00000000-0000-0000-0000-000000000000"))
+  ' >/dev/null || fail "candidate reconciliation did not map legacy function_id"
   kubectl -n "${NAMESPACE}" get lease/webhookrelay-operator-lock >/dev/null
   kubectl -n "${NAMESPACE}" auth can-i create leases.coordination.k8s.io \
     --as="system:serviceaccount:${NAMESPACE}:webhookrelay-operator" | grep -Fxq yes || \
@@ -874,7 +889,8 @@ exercise_helm_lifecycle() {
     .spec.template.spec.containers[0].readinessProbe.httpGet.path == "/readyz"
   ' >/dev/null || fail "candidate operator Deployment lifecycle wiring is invalid"
   kubectl -n "${NAMESPACE}" get pods -l app.kubernetes.io/instance=webhookrelay-operator -o json | \
-    jq -e --arg image "${IMAGE}" 'all(.items[]; .spec.containers[0].image == $image)' >/dev/null || \
+    jq -e --arg image "${IMAGE}" \
+      '(.items | length) == 1 and all(.items[]; .spec.containers[0].image == $image)' >/dev/null || \
     fail "old and candidate operator pods overlapped after upgrade"
 
   scale_operator_to_zero
@@ -887,9 +903,14 @@ exercise_helm_lifecycle() {
     -o jsonpath='{.spec.template.spec.containers[0].image}')" == "${old_image}" ]] || \
     fail "Helm rollback did not restore the published operator image"
   kubectl -n "${NAMESPACE}" get pods -l app.kubernetes.io/instance=webhookrelay-operator -o json | \
-    jq -e --arg image "${old_image}" 'all(.items[]; .spec.containers[0].image == $image)' >/dev/null || \
+    jq -e --arg image "${old_image}" \
+      '(.items | length) == 1 and all(.items[]; .spec.containers[0].image == $image)' >/dev/null || \
     fail "candidate and old operator pods overlapped after rollback"
-  sleep 7
+  kubectl -n "${NAMESPACE}" get deployment/webhookrelay-operator -o json | jq -e '
+    any(.spec.template.spec.containers[0].env[]?;
+      .name == "CLIENT_HTTPS_PROXY" and .value == "http://127.0.0.1:1")
+  ' >/dev/null || fail "rollback did not restore the isolated unreachable API proxy"
+  wait_for_isolated_routing_status Failed
   scale_operator_to_zero
   fake_state_after="$(fake_api_state | jq -c '.mutations')"
   [[ "${fake_state_before}" == "${fake_state_after}" ]] || \
@@ -900,6 +921,10 @@ exercise_helm_lifecycle() {
   kubectl -n "${NAMESPACE}" delete webhookrelayforward/e2e-forward --wait=true --timeout=60s
   wait_for_object_deletion deployment/e2e-forward-whr-deployment
   helm uninstall webhookrelay-operator --namespace "${NAMESPACE}" --wait --timeout 120s
+  kubectl -n "${NAMESPACE}" get lease/webhookrelay-operator-lock >/dev/null || \
+    fail "expected controller-created Lease retention was not observed"
+  kubectl -n "${NAMESPACE}" get configmap/webhookrelay-operator-lock >/dev/null || \
+    fail "expected legacy controller-created ConfigMap retention was not observed"
   kubectl -n "${NAMESPACE}" delete lease/webhookrelay-operator-lock \
     configmap/webhookrelay-operator-lock --ignore-not-found >/dev/null
   kubectl get crd webhookrelayforwards.forward.webhookrelay.com >/dev/null
