@@ -272,13 +272,13 @@ EOF
 
 apply_isolated_forward() {
   local response_body="$1"
-  local include_cleanup_routes="${2:-false}"
+  local include_reconciliation_routes="${2:-false}"
   local credentials_file="${RUN_DIR}/credentials.env"
-  local cleanup_input_yaml=""
+  local retained_input_yaml=""
   local cleanup_output_yaml=""
-  if [[ "${include_cleanup_routes}" == "true" ]]; then
-    cleanup_input_yaml="        - name: e2e-cleanup-input
-          description: removed during reconciliation"
+  if [[ "${include_reconciliation_routes}" == "true" ]]; then
+    retained_input_yaml="        - name: e2e-retained-input
+          description: retained to preserve its public endpoint"
     cleanup_output_yaml="        - name: e2e-cleanup-output
           description: removed during reconciliation
           destination: https://example.invalid/operator-e2e-cleanup
@@ -314,7 +314,7 @@ spec:
           description: ${BUCKET_DESCRIPTION}
           responseBody: ${response_body}
           responseStatusCode: 202
-${cleanup_input_yaml}
+${retained_input_yaml}
       outputs:
         - name: e2e-output
           description: ${BUCKET_DESCRIPTION}
@@ -349,7 +349,7 @@ exercise_isolated_reconcile() {
       any(.inputs[]; .name == "e2e-input" and .body == "operator-e2e-v1") and
       any(.outputs[]; .name == "e2e-output" and .disabled == true)) and
     any(.buckets[]; .name == $name and
-      any(.inputs[]; .name == "e2e-cleanup-input") and
+      any(.inputs[]; .name == "e2e-retained-input") and
       any(.outputs[]; .name == "e2e-cleanup-output")) and
     .mutations.createBucket == 1 and .mutations.createInput == 2 and .mutations.createOutput == 2
   ' "${ARTIFACT_DIR}/isolated-state-v1.json" >/dev/null || fail "fake API did not observe initial convergence"
@@ -361,16 +361,16 @@ exercise_isolated_reconcile() {
     if jq -e --arg name "${BUCKET_NAME}" '
       any(.buckets[]; .name == $name and any(.inputs[]; .name == "e2e-input" and .body == "operator-e2e-v2")) and
       all(.buckets[] | select(.name == $name);
-        all(.inputs[]; .name != "e2e-cleanup-input") and
+        any(.inputs[]; .name == "e2e-retained-input") and
         all(.outputs[]; .name != "e2e-cleanup-output")) and
-      .mutations.updateInput == 1 and .mutations.deleteInput == 1 and .mutations.deleteOutput == 1
+      .mutations.updateInput == 1 and (.mutations.deleteInput // 0) == 0 and .mutations.deleteOutput == 1
     ' "${ARTIFACT_DIR}/isolated-state-v2.json" >/dev/null; then
       break
     fi
     sleep 1
   done
   jq -e '
-    .mutations.updateInput == 1 and .mutations.deleteInput == 1 and .mutations.deleteOutput == 1
+    .mutations.updateInput == 1 and (.mutations.deleteInput // 0) == 0 and .mutations.deleteOutput == 1
   ' "${ARTIFACT_DIR}/isolated-state-v2.json" >/dev/null || fail "fake API did not observe update and cleanup"
 
   before="$(jq -c '.mutations' "${ARTIFACT_DIR}/isolated-state-v2.json")"
