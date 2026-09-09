@@ -111,9 +111,16 @@ verify_and_smoke() {
   verify_image "${AGENT_IMAGE}" "${AGENT_DIGEST}" >/dev/null
   verify_image "${AGENT_UBI_IMAGE}" "${AGENT_UBI_DIGEST}" >/dev/null
   for platform in linux/amd64 linux/arm64; do
+    # Docker's classic image store cannot keep two platform-specific images for
+    # the same manifest-list digest. Clear the previous platform before pulling
+    # the next one, otherwise the arm64 pull fails with "cannot overwrite digest".
+    docker image rm --force "${OPERATOR_IMAGE}@${operator_digest}" >/dev/null 2>&1 || true
+    docker image rm --force "${OPERATOR_IMAGE}" >/dev/null 2>&1 || true
     docker pull --platform "${platform}" "${OPERATOR_IMAGE}@${operator_digest}" >/dev/null
     docker run --rm --platform "${platform}" "${OPERATOR_IMAGE}@${operator_digest}" --help >/dev/null
     for image in "${AGENT_IMAGE}@${AGENT_DIGEST}" "${AGENT_UBI_IMAGE}@${AGENT_UBI_DIGEST}"; do
+      docker image rm --force "${image}" >/dev/null 2>&1 || true
+      docker image rm --force "${image%@*}" >/dev/null 2>&1 || true
       docker pull --platform "${platform}" "${image}" >/dev/null
       docker run --rm --platform "${platform}" "${image}" --version >/dev/null
     done

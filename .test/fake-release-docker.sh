@@ -51,6 +51,7 @@ case "$*" in
       *) exit 2 ;;
     esac
     ;;
+  image\ rm*) printf '%s\n' "$*" >>"${FAKE_REGISTRY}/removals" ;;
   pull*|run*) ;;
   *) printf 'unsupported fake docker: %s\n' "$*" >&2; exit 2 ;;
 esac

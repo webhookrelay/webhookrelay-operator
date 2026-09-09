@@ -26,6 +26,12 @@ jq -e '.operator.digest == "sha256:operator-index" and
   .agent.digest == "sha256:4d73b9e6096d4d653c3b46733aa4dbf45dfde1ed1e5f142da8da5a396eb9ffab" and
   .agentUbi.digest == "sha256:79d86f8dbc71831a16a2e1cd826b5a90a4c5a8a165fc53e62f43243b8274fb22"' \
   "${TEST_ROOT}/release.json" >/dev/null
+[[ "$(grep -c 'image rm --force webhookrelay/webhookrelay-operator:build-test@sha256:operator-index' \
+  "${TEST_ROOT}/registry/removals")" == "2" ]]
+[[ "$(grep -c 'image rm --force webhookrelay/webhookrelayd:1.37.0@' \
+  "${TEST_ROOT}/registry/removals")" == "2" ]]
+[[ "$(grep -c 'image rm --force webhookrelay/webhookrelayd-ubi8:1.37.0@' \
+  "${TEST_ROOT}/registry/removals")" == "2" ]]
 run_release promote-version sha256:operator-index
 run_release promote-version sha256:operator-index
 printf 'sha256:63e40035e33c9485c4909868cc5f2372cf06c97eee26b342f2fa8f7562f5e520\n' \
