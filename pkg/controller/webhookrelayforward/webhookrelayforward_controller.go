@@ -3,15 +3,19 @@ package webhookrelayforward
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -36,9 +40,11 @@ const (
 	containerWebsocketEnvName   = "WEBSOCKET_TRANSPORT"
 	// containerBucketsEnvName specify which buckets the agent should
 	// subscribe to
-	containerBucketsEnvName = "BUCKETS"
-	forwarderLabelKey       = "name"
-	forwarderLabelValue     = "webhookrelay-forwarder"
+	containerBucketsEnvName        = "BUCKETS"
+	forwarderLabelKey              = "name"
+	forwarderLabelValue            = "webhookrelay-forwarder"
+	reasonDeploymentAvailable      = "DeploymentAvailable"
+	reasonProgressDeadlineExceeded = "ProgressDeadlineExceeded"
 )
 
 /**
@@ -117,6 +123,11 @@ func (r *ReconcileWebhookRelayForward) Reconcile(ctx context.Context, request ct
 		r.apiClient.instanceUID != instance.GetUID() {
 		if err := r.setClientForCluster(ctx, instance); err != nil {
 			logger.Error(err, "Failed to configure Webhook Relay API client, cannot continue")
+			_, statusErr := r.updateRoutingStatus(logger, ctx, forwardv1.RoutingStatusFailed,
+				"Relay API client configuration failed", instance)
+			if statusErr != nil {
+				return reconcileResult, statusErr
+			}
 			return reconcileResult, err
 		}
 		logger.Info("API client initialized")
@@ -163,7 +174,8 @@ func (r *ReconcileWebhookRelayForward) Reconcile(ctx context.Context, request ct
 	}
 
 	if err := r.reconcile(ctx, logger, instance); err != nil {
-		logger.Info("Reconcile failed", "error", err)
+		logger.Error(err, "Deployment reconcile failed")
+		return reconcileResult, err
 	}
 
 	return reconcileResult, nil
@@ -175,23 +187,24 @@ func (r *ReconcileWebhookRelayForward) updateRoutingStatus(
 	status forwardv1.RoutingStatus,
 	message string,
 	instance *forwardv1.WebhookRelayForward) (bool, error) {
-	// check whether status has changed
-	if instance.Status.RoutingStatus == status && instance.Status.Message == message {
-		return false, nil
-	}
-
-	patch := instance.DeepCopy()
-
-	patch.Status.RoutingStatus = status
-	patch.Status.Message = message
-
 	logger.Info("Updating routing status",
 		"phase", status,
 		"message", message,
 	)
-
-	err := r.client.Status().Patch(ctx, patch, client.MergeFrom(instance))
-	return true, err
+	return r.patchStatus(ctx, instance, func(current *forwardv1.WebhookRelayForwardStatus, generation int64) {
+		current.RoutingStatus = status
+		current.Message = message
+		conditionStatus := metav1.ConditionFalse
+		reason := "RoutingFailed"
+		if status == forwardv1.RoutingStatusConfigured {
+			conditionStatus = metav1.ConditionTrue
+			reason = "RoutingConfigured"
+		}
+		meta.SetStatusCondition(&current.Conditions, metav1.Condition{
+			Type: forwardv1.ConditionRoutingReady, Status: conditionStatus, Reason: reason,
+			Message: message, ObservedGeneration: generation,
+		})
+	})
 }
 
 func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(
@@ -199,24 +212,78 @@ func (r *ReconcileWebhookRelayForward) updateDeploymentStatus(
 	logger logr.Logger,
 	status forwardv1.AgentStatus,
 	ready bool,
+	reason string,
+	message string,
 	instance *forwardv1.WebhookRelayForward,
 ) (bool, error) {
-	if instance.Status.AgentStatus == status && instance.Status.Ready == ready {
-		return false, nil
-	}
-
-	patch := instance.DeepCopy()
-
-	patch.Status.AgentStatus = status
-	patch.Status.Ready = ready
-
 	logger.Info("Updating deployment status",
 		"status", status,
 		"ready", ready,
 	)
+	return r.patchStatus(ctx, instance, func(current *forwardv1.WebhookRelayForwardStatus, generation int64) {
+		current.AgentStatus = status
+		conditionStatus := metav1.ConditionFalse
+		if ready {
+			conditionStatus = metav1.ConditionTrue
+		}
+		meta.SetStatusCondition(&current.Conditions, metav1.Condition{
+			Type: forwardv1.ConditionAgentReady, Status: conditionStatus, Reason: reason,
+			Message: message, ObservedGeneration: generation,
+		})
+	})
+}
 
-	err := r.client.Status().Patch(ctx, patch, client.MergeFrom(instance))
-	return true, err
+func (r *ReconcileWebhookRelayForward) patchStatus(
+	ctx context.Context,
+	instance *forwardv1.WebhookRelayForward,
+	mutate func(*forwardv1.WebhookRelayForwardStatus, int64),
+) (bool, error) {
+	updated := false
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		current := &forwardv1.WebhookRelayForward{}
+		if err := r.client.Get(ctx, client.ObjectKeyFromObject(instance), current); err != nil {
+			return err
+		}
+		base := current.DeepCopy()
+		mutate(&current.Status, current.Generation)
+		current.Status.ObservedGeneration = current.Generation
+		setAggregateReady(&current.Status, current.Generation)
+		if reflect.DeepEqual(base.Status, current.Status) {
+			instance.Status = current.Status
+			return nil
+		}
+		if err := r.client.Status().Patch(ctx, current, client.MergeFrom(base)); err != nil {
+			return err
+		}
+		updated = true
+		instance.Status = current.Status
+		return nil
+	})
+	return updated, err
+}
+
+func setAggregateReady(status *forwardv1.WebhookRelayForwardStatus, generation int64) {
+	routing := meta.FindStatusCondition(status.Conditions, forwardv1.ConditionRoutingReady)
+	agent := meta.FindStatusCondition(status.Conditions, forwardv1.ConditionAgentReady)
+	ready := routing != nil && routing.ObservedGeneration == generation && routing.Status == metav1.ConditionTrue &&
+		agent != nil && agent.ObservedGeneration == generation && agent.Status == metav1.ConditionTrue
+	reason := "RoutingNotReady"
+	message := "routing configuration is not ready"
+	if routing != nil && routing.ObservedGeneration == generation && routing.Status == metav1.ConditionTrue {
+		reason = "AgentNotReady"
+		message = "agent Deployment is not ready"
+	}
+	conditionStatus := metav1.ConditionFalse
+	if ready {
+		conditionStatus = metav1.ConditionTrue
+		reason = "Ready"
+		message = "routing and agent Deployment are ready"
+	}
+	status.Ready = ready
+	meta.SetStatusCondition(&status.Conditions, metav1.Condition{
+		Type: forwardv1.ConditionReady, Status: conditionStatus, Reason: reason,
+		Message: message, ObservedGeneration: generation,
+	})
 }
 
 func (r *ReconcileWebhookRelayForward) updatePublicEndpoints(ctx context.Context, logger logr.Logger, instance *forwardv1.WebhookRelayForward) (bool, error) {
@@ -229,9 +296,10 @@ func (r *ReconcileWebhookRelayForward) updatePublicEndpoints(ctx context.Context
 	logger.Info("Updating public endpoints list",
 		"endpoints", patch.Status.PublicEndpoints,
 	)
-
-	err := r.client.Status().Patch(ctx, patch, client.MergeFrom(instance))
-	return true, err
+	desired := append([]string(nil), patch.Status.PublicEndpoints...)
+	return r.patchStatus(ctx, instance, func(current *forwardv1.WebhookRelayForwardStatus, _ int64) {
+		current.PublicEndpoints = desired
+	})
 }
 
 func (r *ReconcileWebhookRelayForward) reconcile(ctx context.Context, logger logr.Logger, instance *forwardv1.WebhookRelayForward) error {
@@ -260,24 +328,18 @@ func (r *ReconcileWebhookRelayForward) reconcile(ctx context.Context, logger log
 				err.Error(),
 			)
 
-			_, updateErr := r.updateDeploymentStatus(ctx, logger, forwardv1.AgentStatusCreating, false, instance)
+			_, updateErr := r.updateDeploymentStatus(ctx, logger, forwardv1.AgentStatusCreating, false,
+				"DeploymentCreateFailed", "failed to create agent Deployment", instance)
 			if updateErr != nil {
-				if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
-					logger.Error(updateErr, "Failed to update CR status",
-						"status", forwardv1.AgentStatusCreating,
-					)
-				}
+				return fmt.Errorf("failed to create Deployment: %v; failed to update status: %w", err, updateErr)
 			}
 			return err
 		}
 
-		_, updateErr := r.updateDeploymentStatus(ctx, logger, forwardv1.AgentStatusRunning, true, instance)
+		_, updateErr := r.updateDeploymentStatus(ctx, logger, forwardv1.AgentStatusCreating, false,
+			"DeploymentCreating", "agent Deployment was created and is waiting for rollout", instance)
 		if updateErr != nil {
-			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
-				logger.Error(updateErr, "Failed to update CR status",
-					"status", forwardv1.AgentStatusRunning,
-				)
-			}
+			return updateErr
 		}
 
 		// Deployment created successfully - don't requeue
@@ -289,14 +351,14 @@ func (r *ReconcileWebhookRelayForward) reconcile(ctx context.Context, logger log
 	// compare image, buckets
 	patched, equals := r.checkDeployment(instance, found)
 	if equals {
-		// TODO: check replicas 1/1 for Ready status
-		updated, updateErr := r.updateDeploymentStatus(ctx, logger, forwardv1.AgentStatusRunning, true, instance)
+		ready, reason, message := deploymentReadiness(found)
+		agentStatus := forwardv1.AgentStatusCreating
+		if ready {
+			agentStatus = forwardv1.AgentStatusRunning
+		}
+		updated, updateErr := r.updateDeploymentStatus(ctx, logger, agentStatus, ready, reason, message, instance)
 		if updateErr != nil {
-			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
-				logger.Error(updateErr, "Failed to update CR status",
-					"status", forwardv1.AgentStatusRunning,
-				)
-			}
+			return updateErr
 		}
 		if updated {
 			return nil
@@ -304,11 +366,7 @@ func (r *ReconcileWebhookRelayForward) reconcile(ctx context.Context, logger log
 
 		_, updateErr = r.updatePublicEndpoints(ctx, logger, instance)
 		if updateErr != nil {
-			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfill") {
-				logger.Error(updateErr, "Failed to update CR status public endpoint list",
-					"status", forwardv1.AgentStatusRunning,
-				)
-			}
+			return updateErr
 		}
 
 		// Deployment already exists - don't requeue
@@ -329,6 +387,29 @@ func (r *ReconcileWebhookRelayForward) reconcile(ctx context.Context, logger log
 	}
 
 	logger.Info("Deployment updated")
+	_, updateErr := r.updateDeploymentStatus(ctx, logger, forwardv1.AgentStatusCreating, false,
+		"DeploymentUpdating", "agent Deployment is rolling out an updated specification", instance)
+	return updateErr
+}
 
-	return nil
+func deploymentReadiness(deployment *appsv1.Deployment) (ready bool, reason, message string) {
+	for i := range deployment.Status.Conditions {
+		condition := deployment.Status.Conditions[i]
+		if condition.Type == appsv1.DeploymentProgressing && condition.Status == corev1.ConditionFalse &&
+			condition.Reason == reasonProgressDeadlineExceeded {
+			return false, reasonProgressDeadlineExceeded, "agent Deployment exceeded its progress deadline"
+		}
+	}
+	if deployment.Status.ObservedGeneration < deployment.Generation {
+		return false, "DeploymentNotObserved", "agent Deployment controller has not observed the latest generation"
+	}
+	desired := int32(1)
+	if deployment.Spec.Replicas != nil {
+		desired = *deployment.Spec.Replicas
+	}
+	if deployment.Status.ReadyReplicas != desired || deployment.Status.UpdatedReplicas != desired ||
+		deployment.Status.AvailableReplicas != desired || deployment.Status.UnavailableReplicas != 0 {
+		return false, "DeploymentUnavailable", "agent Deployment rollout is not available"
+	}
+	return true, reasonDeploymentAvailable, "agent Deployment rollout is available"
 }

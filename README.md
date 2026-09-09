@@ -251,6 +251,11 @@ repository or tag.
 - `routingStatus: Failed` includes API or validation details. Inspect it with
   `kubectl -n <namespace> describe webhookrelayforward <name>` and check the
   operator logs.
+- The `RoutingReady`, `AgentReady`, and aggregate `Ready` conditions distinguish
+  successful Relay API configuration from the relay-agent Deployment rollout.
+  A condition is current only when its `observedGeneration` equals
+  `metadata.generation`; `status.ready` remains as a compatibility mirror of
+  the aggregate condition.
 - `exec format error` in the agent pod means its image architecture does not
   match the node. Set `spec.image` to a compatible build.
 - If the agent cannot connect over gRPC, set `websocketTransport: true` and

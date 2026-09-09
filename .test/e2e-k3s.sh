@@ -273,6 +273,7 @@ EOF
 apply_isolated_forward() {
   local response_body="$1"
   local include_reconciliation_routes="${2:-false}"
+  local agent_image="${3:-registry.k8s.io/pause:3.10}"
   local credentials_file="${RUN_DIR}/credentials.env"
   local retained_input_yaml=""
   local cleanup_output_yaml=""
@@ -297,7 +298,7 @@ metadata:
   namespace: ${NAMESPACE}
 spec:
   secretRefName: e2e-credentials
-  image: busybox:1.36.1
+  image: ${agent_image}
   websocketTransport: false
   resources:
     requests:
@@ -338,6 +339,23 @@ wait_for_isolated_routing_status() {
     sleep 1
   done
   fail "isolated CR did not reach routing status ${expected}"
+}
+
+wait_for_isolated_condition() {
+  local condition_type="$1"
+  local expected_status="$2"
+  for _ in $(seq 1 90); do
+    if kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o json | jq -e \
+      --arg type "${condition_type}" --arg status "${expected_status}" '
+        .metadata.generation as $generation |
+        any(.status.conditions[]?;
+          .type == $type and .status == $status and .observedGeneration == $generation)
+      ' >/dev/null; then
+      return
+    fi
+    sleep 1
+  done
+  fail "isolated CR condition ${condition_type} did not reach ${expected_status} for its current generation"
 }
 
 exercise_isolated_reconcile() {
@@ -488,7 +506,7 @@ exercise_reconcile() {
   if [[ "${PRODUCTION_MODE}" == "true" ]]; then
     apply_production_forward "" "" baseline
   else
-    apply_isolated_forward operator-e2e-v1 true
+    apply_isolated_forward operator-e2e-v1 true does-not-exist.invalid/webhookrelay-agent:broken
   fi
 
   for _ in $(seq 1 90); do
@@ -497,8 +515,17 @@ exercise_reconcile() {
     fi
     sleep 2
   done
-  local expected_agent_image="busybox:1.36.1"
+  local expected_agent_image="registry.k8s.io/pause:3.10"
   [[ "${PRODUCTION_MODE}" != "true" ]] || expected_agent_image="${AGENT_IMAGE}"
+  if [[ "${PRODUCTION_MODE}" != "true" ]]; then
+    wait_for_isolated_condition AgentReady False
+    wait_for_isolated_condition Ready False
+    log "recovering isolated agent Deployment from an invalid image"
+    apply_isolated_forward operator-e2e-v1 true "${expected_agent_image}"
+    kubectl -n "${NAMESPACE}" rollout status deployment/e2e-forward-whr-deployment --timeout=180s
+    wait_for_isolated_condition AgentReady True
+    wait_for_isolated_condition Ready True
+  fi
   kubectl -n "${NAMESPACE}" get deployment/e2e-forward-whr-deployment -o json \
     >"${ARTIFACT_DIR}/reconciled-deployment.json"
   jq -e --arg image "${expected_agent_image}" '

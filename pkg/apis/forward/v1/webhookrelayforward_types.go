@@ -272,6 +272,9 @@ type RoutingStatus string
 const (
 	RoutingStatusConfigured RoutingStatus = "Configured"
 	RoutingStatusFailed     RoutingStatus = "Failed"
+	ConditionRoutingReady                 = "RoutingReady"
+	ConditionAgentReady                   = "AgentReady"
+	ConditionReady                        = "Ready"
 )
 
 // WebhookRelayForwardStatus defines the observed state of WebhookRelayForward
@@ -285,6 +288,10 @@ type WebhookRelayForwardStatus struct {
 	AgentStatus AgentStatus `json:"agentStatus,omitempty"`
 	// Ready indicates whether agent is deployed
 	Ready bool `json:"ready,omitempty"`
+	// ObservedGeneration is the latest spec generation reflected in status.
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// Conditions report routing, agent rollout, and aggregate readiness.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	RoutingStatus RoutingStatus `json:"routingStatus,omitempty"`
 	Message       string        `json:"message,omitempty"`
