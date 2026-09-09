@@ -54,6 +54,9 @@ jobs:
           make chart-package HELM_BIN=.test/helm
           make chart-release-check HELM_BIN=.test/helm
           make chart-release-test HELM_BIN=.test/helm
+          make release-workflow-test
+          .test/helm template webhookrelay-operator charts/webhookrelay-operator \
+            --set-string image.digest=sha256:test | grep -Fq 'webhookrelay/webhookrelay-operator@sha256:test'
 
   e2e:
     name: End-to-End and Helm Lifecycle (k3s)

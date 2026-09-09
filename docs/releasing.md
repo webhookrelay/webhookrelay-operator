@@ -57,3 +57,37 @@ the same bytes, digest, and URL. The existing index received the same metadata
 policy as a one-time migration before this pipeline was enabled.
 This prevents the stale-index mismatch previously reported by Artifact Hub.
 The workflow never creates a GitHub release.
+
+## Coordinated operator release
+
+Operator releases run only from a `0.*` tag whose commit is already reachable
+from `master`. The tag, chart `appVersion`, default operator image tag, chart
+version, and pinned relay-agent version are validated before any credentials are
+available. The release workflow then:
+
+1. builds amd64/arm64 images to a commit-scoped staging tag, or resumes only if
+   that tag has the expected revision labels;
+2. records the OCI index and child-manifest digests, validates the pinned
+   standard and UBI relay-agent indexes, and executes all three images on both
+   architectures;
+3. deploys the operator by digest into disposable K3s and runs production live
+   delivery with the relay agent pinned by digest;
+4. promotes the verified operator index to the immutable version tag, publishes
+   the already lifecycle-tested chart, and only then moves `latest`;
+5. creates or resumes a matching draft GitHub release, byte-verifies all remote
+   assets, rechecks the tag commit, and publishes the draft as the final public
+   mutation.
+
+Release jobs use one non-cancelling concurrency group. A retry never rebuilds a
+published version: staging, version, chart, and draft assets are accepted only
+when their revisions, digests, or bytes match. A different existing version tag
+or chart fails closed. The legacy release-triggered image workflow is removed,
+so publishing the GitHub release cannot start a second build or move `latest`.
+
+The protected `release` environment gates Docker Hub writes, chart publication,
+and the final release. Relay credentials remain confined to the `production`
+environment. An active repository ruleset restricts creation, update, and
+deletion of `0.*` tags to repository administrators. The release assets include
+the deterministic chart, its checksum,
+chart metadata, operator metadata, and the complete operator/agent platform
+digest manifest.

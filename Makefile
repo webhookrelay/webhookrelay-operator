@@ -49,7 +49,7 @@ test:
 e2e:
 	./.test/e2e-k3s.sh
 
-.PHONY: chart-package chart-release-check chart-release-test
+.PHONY: chart-package chart-release-check chart-release-test release-workflow-test
 chart-package:
 	OPERATOR_VERSION=$(OPERATOR_VERSION) CHART_VERSION=$(CHART_VERSION) \
 		HELM_BIN=$${HELM_BIN:-helm} ./.scripts/chart-release.sh package
@@ -60,6 +60,10 @@ chart-release-check:
 
 chart-release-test:
 	HELM_BIN=$${HELM_BIN:-helm} ./.test/chart-release.sh
+
+release-workflow-test:
+	./.test/release-workflow.sh
+	./.test/image-release.sh
 
 ## Start local Webhook Relay operator
 local-run:
