@@ -49,7 +49,7 @@ validate_versions() {
 }
 
 package_chart() {
-  local digest second_archive
+  local digest reference_archive reference_dir second_archive
   mkdir -p "${OUTPUT_DIR}"
   validate_versions
   "${HELM_BIN}" lint "${CHART_DIR}"
@@ -58,11 +58,58 @@ package_chart() {
   go run "${REPO_ROOT}/.scripts/chart-artifact.go" package "${CHART_DIR}" "${second_archive}"
   cmp "${ARTIFACT_PATH}" "${second_archive}" || fail "chart packaging is not reproducible"
   rm -f "${second_archive}"
+  reference_dir="$(mktemp -d)"
+  "${HELM_BIN}" package "${CHART_DIR}" --destination "${reference_dir}" >/dev/null
+  reference_archive="${reference_dir}/${ARTIFACT_NAME}"
+  diff -u <(tar -tzf "${reference_archive}" | sort) <(tar -tzf "${ARTIFACT_PATH}" | sort) || \
+    fail "reproducible archive members differ from pinned Helm packaging"
+  rm -rf -- "${reference_dir}"
   "${HELM_BIN}" lint "${ARTIFACT_PATH}"
   digest="$(sha256sum "${ARTIFACT_PATH}" | awk '{print $1}')"
   printf '%s  %s\n' "${digest}" "${ARTIFACT_NAME}" >"${CHECKSUM_PATH}"
   printf '{"operatorVersion":"%s","chartVersion":"%s","agentImage":"%s","sha256":"%s"}\n' \
     "${OPERATOR_VERSION}" "${CHART_VERSION}" "${AGENT_IMAGE}" "${digest}" >"${METADATA_PATH}"
+}
+
+gcs_artifact_status() {
+  local error_file generation remote_artifact
+  error_file="${OUTPUT_DIR}/gcs-artifact-error.txt"
+  if generation="$(gcloud storage objects describe "gs://${CHART_BUCKET}/${ARTIFACT_NAME}" \
+    --format='value(generation)' 2>"${error_file}")"; then
+    remote_artifact="${OUTPUT_DIR}/gcs-${ARTIFACT_NAME}"
+    gcloud storage cp "gs://${CHART_BUCKET}/${ARTIFACT_NAME}#${generation}" \
+      "${remote_artifact}" >/dev/null
+    cmp "${ARTIFACT_PATH}" "${remote_artifact}" || \
+      fail "refusing to overwrite published ${ARTIFACT_NAME} with different bytes"
+    printf 'identical\n'
+    return
+  fi
+  if grep -Eqi 'not found|404' "${error_file}"; then
+    printf 'missing\n'
+    return
+  fi
+  fail "could not inspect gs://${CHART_BUCKET}/${ARTIFACT_NAME}: $(<"${error_file}")"
+}
+
+verify_public_repository() {
+  local digest="$1"
+  local http_status
+  for _ in $(seq 1 30); do
+    http_status="$(curl --location --show-error --silent \
+      --output "${OUTPUT_DIR}/published-artifact.tgz" --write-out '%{http_code}' \
+      "${REPOSITORY_URL}/${ARTIFACT_NAME}")"
+    if [[ "${http_status}" == "200" ]] && \
+      cmp "${ARTIFACT_PATH}" "${OUTPUT_DIR}/published-artifact.tgz" && \
+      curl --fail --location --show-error --silent \
+        --output "${OUTPUT_DIR}/published-index.yaml" "${REPOSITORY_URL}/index.yaml" && \
+      go run "${REPO_ROOT}/.scripts/chart-artifact.go" verify-index \
+        "${OUTPUT_DIR}/published-index.yaml" "${CHART_VERSION}" "${digest}" \
+        "${REPOSITORY_URL}/${ARTIFACT_NAME}" >/dev/null 2>&1; then
+      return
+    fi
+    sleep 2
+  done
+  fail "public chart artifact and index did not converge"
 }
 
 remote_artifact_status() {
@@ -110,13 +157,16 @@ publish_chart() {
       fail "rebuilt chart does not match the validated artifact"
   fi
   digest="$(awk '{print $1}' "${CHECKSUM_PATH}")"
-  status="$(remote_artifact_status)"
-  curl --fail --location --show-error --silent --output "${OUTPUT_DIR}/remote-index.yaml" \
-    "${REPOSITORY_URL}/index.yaml"
+  status="$(gcs_artifact_status)"
+  index_generation="$(gcloud storage objects describe "gs://${CHART_BUCKET}/index.yaml" \
+    --format='value(generation)')"
+  gcloud storage cp "gs://${CHART_BUCKET}/index.yaml#${index_generation}" \
+    "${OUTPUT_DIR}/remote-index.yaml" >/dev/null
   if [[ "${status}" == "identical" ]] && \
     go run "${REPO_ROOT}/.scripts/chart-artifact.go" verify-index "${OUTPUT_DIR}/remote-index.yaml" \
-      "${CHART_VERSION}" "${digest}" "${REPOSITORY_URL}/${ARTIFACT_NAME}"; then
-    printf 'chart-release: published artifact and index already match\n'
+      "${CHART_VERSION}" "${digest}" "${REPOSITORY_URL}/${ARTIFACT_NAME}" >/dev/null 2>&1; then
+    verify_public_repository "${digest}"
+    printf 'chart-release: authoritative and public artifacts already match\n'
     return 0
   fi
   if [[ "${status}" == "missing" ]]; then
@@ -127,23 +177,16 @@ publish_chart() {
   index_dir="${OUTPUT_DIR}/repository"
   mkdir -p "${index_dir}"
   cp "${ARTIFACT_PATH}" "${index_dir}/${ARTIFACT_NAME}"
-  index_generation="$(gcloud storage objects describe "gs://${CHART_BUCKET}/index.yaml" \
-    --format='value(generation)')"
   "${HELM_BIN}" repo index "${index_dir}" --url "${REPOSITORY_URL}" \
     --merge "${OUTPUT_DIR}/remote-index.yaml"
+  go run "${REPO_ROOT}/.scripts/chart-artifact.go" verify-retained \
+    "${OUTPUT_DIR}/remote-index.yaml" "${index_dir}/index.yaml"
   go run "${REPO_ROOT}/.scripts/chart-artifact.go" verify-index "${index_dir}/index.yaml" \
     "${CHART_VERSION}" "${digest}" "${REPOSITORY_URL}/${ARTIFACT_NAME}"
   gcloud storage cp "${index_dir}/index.yaml" "gs://${CHART_BUCKET}/index.yaml" \
     --if-generation-match="${index_generation}" --content-type=application/yaml
 
-  curl --fail --location --show-error --silent --output "${OUTPUT_DIR}/published-artifact.tgz" \
-    "${REPOSITORY_URL}/${ARTIFACT_NAME}"
-  cmp "${ARTIFACT_PATH}" "${OUTPUT_DIR}/published-artifact.tgz" || \
-    fail "published artifact digest does not match"
-  curl --fail --location --show-error --silent --output "${OUTPUT_DIR}/published-index.yaml" \
-    "${REPOSITORY_URL}/index.yaml"
-  go run "${REPO_ROOT}/.scripts/chart-artifact.go" verify-index "${OUTPUT_DIR}/published-index.yaml" \
-    "${CHART_VERSION}" "${digest}" "${REPOSITORY_URL}/${ARTIFACT_NAME}"
+  verify_public_repository "${digest}"
 }
 
 case "${1:-}" in

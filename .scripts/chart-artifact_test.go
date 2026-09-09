@@ -75,6 +75,28 @@ entries:
 	if err := verifyIndex(path, "0.7.0", "wrong", "https://charts.example/operator-0.7.0.tgz"); err == nil {
 		t.Fatal("expected digest mismatch")
 	}
+
+	newPath := filepath.Join(t.TempDir(), "new-index.yaml")
+	mustWrite(t, newPath, `apiVersion: v1
+entries:
+  webhookrelay-operator:
+  - apiVersion: v2
+    digest: def456
+    urls:
+    - https://charts.example/operator-0.8.0.tgz
+    version: 0.8.0
+  - apiVersion: v2
+    digest: abc123
+    urls:
+    - https://charts.example/operator-0.7.0.tgz
+    version: 0.7.0
+`)
+	if err := verifyRetained(path, newPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyRetained(newPath, path); err == nil {
+		t.Fatal("expected dropped entry error")
+	}
 }
 
 func mustWrite(t *testing.T, path, contents string) {

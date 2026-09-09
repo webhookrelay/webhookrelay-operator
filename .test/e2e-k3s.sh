@@ -13,7 +13,7 @@ ARTIFACT_DIR="${REPO_ROOT}/.test/artifacts/${RUN_ID}"
 BIN_DIR="${RUN_DIR}/bin"
 K3S_BIN="${BIN_DIR}/k3s"
 HELM_BIN="${BIN_DIR}/helm"
-CANDIDATE_CHART="${RUN_DIR}/webhookrelay-operator-0.7.0.tgz"
+CANDIDATE_CHART="${WHR_E2E_CANDIDATE_CHART:-${RUN_DIR}/webhookrelay-operator-0.7.0.tgz}"
 OLD_CHART="${RUN_DIR}/webhookrelay-operator-0.4.1.tgz"
 KUBECONFIG="${RUN_DIR}/kubeconfig"
 K3S_CONFIG="${RUN_DIR}/k3s.yaml"
@@ -89,14 +89,16 @@ download_tools() {
 }
 
 package_candidate_chart() {
-  local packaged_chart
+  if [[ -n "${WHR_E2E_CANDIDATE_CHART:-}" ]]; then
+    [[ -f "${CANDIDATE_CHART}" ]] || fail "supplied candidate chart does not exist: ${CANDIDATE_CHART}"
+    [[ "$(basename "${CANDIDATE_CHART}")" == "webhookrelay-operator-0.7.0.tgz" ]] || \
+      fail "supplied candidate chart has an unexpected filename"
+    helm lint "${CANDIDATE_CHART}"
+    return
+  fi
   log "packaging candidate Helm chart"
-  helm package "${REPO_ROOT}/charts/webhookrelay-operator" --destination "${RUN_DIR}" \
-    >"${ARTIFACT_DIR}/helm-package.txt"
-  packaged_chart="$(awk '/Successfully packaged chart and saved it to:/ {print $NF}' \
-    "${ARTIFACT_DIR}/helm-package.txt")"
-  [[ "${packaged_chart}" == "${CANDIDATE_CHART}" ]] || \
-    fail "candidate chart package was ${packaged_chart}, expected ${CANDIDATE_CHART}"
+  OPERATOR_VERSION=0.8.0 CHART_VERSION=0.7.0 OUTPUT_DIR="${RUN_DIR}" HELM_BIN="${HELM_BIN}" \
+    "${REPO_ROOT}/.scripts/chart-release.sh" package >"${ARTIFACT_DIR}/helm-package.txt"
   [[ -f "${CANDIDATE_CHART}" ]] || fail "candidate chart package was not created"
 }
 

@@ -21,7 +21,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fatalf("usage: chart-artifact package CHART_DIR OUTPUT | verify-index INDEX VERSION DIGEST URL")
+		fatalf("usage: chart-artifact package CHART_DIR OUTPUT | verify-index INDEX VERSION DIGEST URL | verify-retained OLD_INDEX NEW_INDEX")
 	}
 	var err error
 	switch os.Args[1] {
@@ -35,6 +35,11 @@ func main() {
 			fatalf("usage: chart-artifact verify-index INDEX VERSION DIGEST URL")
 		}
 		err = verifyIndex(os.Args[2], os.Args[3], os.Args[4], os.Args[5])
+	case "verify-retained":
+		if len(os.Args) != 4 {
+			fatalf("usage: chart-artifact verify-retained OLD_INDEX NEW_INDEX")
+		}
+		err = verifyRetained(os.Args[2], os.Args[3])
 	default:
 		fatalf("unknown command %q", os.Args[1])
 	}
@@ -149,9 +154,27 @@ type indexEntry struct {
 }
 
 func verifyIndex(path, version, digest, artifactURL string) error {
+	entries, err := parseIndex(path)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.version != version || entry.digest != digest {
+			continue
+		}
+		for _, url := range entry.urls {
+			if url == artifactURL {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("index has no version %s with digest %s and URL %s", version, digest, artifactURL)
+}
+
+func parseIndex(path string) ([]indexEntry, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("open index: %w", err)
+		return nil, fmt.Errorf("open index: %w", err)
 	}
 	defer file.Close()
 	var entries []indexEntry
@@ -178,19 +201,45 @@ func verifyIndex(path, version, digest, artifactURL string) error {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("read index: %w", err)
+		return nil, fmt.Errorf("read index: %w", err)
 	}
-	for _, entry := range entries {
-		if entry.version != version || entry.digest != digest {
-			continue
-		}
-		for _, url := range entry.urls {
-			if url == artifactURL {
-				return nil
+	return entries, nil
+}
+
+func verifyRetained(oldPath, newPath string) error {
+	oldEntries, err := parseIndex(oldPath)
+	if err != nil {
+		return err
+	}
+	newEntries, err := parseIndex(newPath)
+	if err != nil {
+		return err
+	}
+	for _, oldEntry := range oldEntries {
+		found := false
+		for _, newEntry := range newEntries {
+			if reflectEntry(oldEntry, newEntry) {
+				found = true
+				break
 			}
 		}
+		if !found {
+			return fmt.Errorf("new index dropped version %s digest %s URLs %v", oldEntry.version, oldEntry.digest, oldEntry.urls)
+		}
 	}
-	return fmt.Errorf("index has no version %s with digest %s and URL %s", version, digest, artifactURL)
+	return nil
+}
+
+func reflectEntry(left, right indexEntry) bool {
+	if left.version != right.version || left.digest != right.digest || len(left.urls) != len(right.urls) {
+		return false
+	}
+	for i := range left.urls {
+		if left.urls[i] != right.urls[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func fileSHA256(path string) (string, error) {
