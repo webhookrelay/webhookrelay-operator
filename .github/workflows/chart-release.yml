@@ -16,6 +16,16 @@ on:
         required: false
         default: false
         type: boolean
+      operator_image:
+        description: Optional immutable operator image used by lifecycle tests
+        required: false
+        default: ""
+        type: string
+      operator_index_digest:
+        description: Expected operator OCI index digest for the lifecycle pod
+        required: false
+        default: ""
+        type: string
   workflow_dispatch:
     inputs:
       operator_version:
@@ -62,13 +72,14 @@ jobs:
       - name: Upload candidate artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
-          name: helm-chart-${{ inputs.chart_version }}
+          name: helm-chart-${{ inputs.chart_version }}-${{ github.run_id }}
           path: |
             dist/chart/webhookrelay-operator-${{ inputs.chart_version }}.tgz
             dist/chart/webhookrelay-operator-${{ inputs.chart_version }}.tgz.sha256
             dist/chart/release-metadata.json
           if-no-files-found: error
           retention-days: 14
+          overwrite: true
 
   lifecycle:
     name: Test exact chart artifact in k3s
@@ -87,12 +98,14 @@ jobs:
       - name: Download validated artifact
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: helm-chart-${{ inputs.chart_version }}
+          name: helm-chart-${{ inputs.chart_version }}-${{ github.run_id }}
           path: validated
 
       - name: Run packaged chart lifecycle
         env:
           WHR_E2E_CANDIDATE_CHART: ${{ github.workspace }}/validated/webhookrelay-operator-${{ inputs.chart_version }}.tgz
+          WHR_E2E_OPERATOR_IMAGE: ${{ inputs.operator_image }}
+          WHR_E2E_OPERATOR_INDEX_DIGEST: ${{ inputs.operator_index_digest }}
         run: make e2e
 
       - name: Upload failure diagnostics
@@ -121,7 +134,7 @@ jobs:
       - name: Download validated artifact
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: helm-chart-${{ inputs.chart_version }}
+          name: helm-chart-${{ inputs.chart_version }}-${{ github.run_id }}
           path: validated
 
       - name: Set up Go

@@ -7,6 +7,8 @@ replicaCount: 1
 image:
   repository: webhookrelay/webhookrelay-operator
   pullPolicy: Always
+  # Optional immutable OCI digest. When set, this takes precedence over tag.
+  digest: ""
   # Overrides the image tag whose default is the chart appVersion.
   tag: "0.8.0"
 

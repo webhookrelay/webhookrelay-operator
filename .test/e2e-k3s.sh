@@ -22,7 +22,18 @@ K3S_LOG="${ARTIFACT_DIR}/k3s.log"
 K3S_DATA_DIR="/var/lib/webhookrelay-operator-e2e-${RUN_ID}"
 K3S_CLIENT_DATA_DIR="${RUN_DIR}/client-data"
 NAMESPACE="webhookrelay-operator-e2e"
-IMAGE="webhookrelay-operator-e2e:${RUN_ID}"
+IMAGE="${WHR_E2E_OPERATOR_IMAGE:-webhookrelay-operator-e2e:${RUN_ID}}"
+OPERATOR_IMAGE_REPOSITORY="${IMAGE%@*}"
+OPERATOR_IMAGE_DIGEST=""
+OPERATOR_IMAGE_TAG="${IMAGE##*:}"
+if [[ "${IMAGE}" == *@* ]]; then
+  OPERATOR_IMAGE_DIGEST="${IMAGE#*@}"
+  OPERATOR_IMAGE_TAG=""
+else
+  OPERATOR_IMAGE_REPOSITORY="${IMAGE%:*}"
+fi
+OPERATOR_PULL_POLICY="IfNotPresent"
+[[ -z "${WHR_E2E_OPERATOR_IMAGE:-}" ]] || OPERATOR_PULL_POLICY="Always"
 RECEIVER_IMAGE="webhookrelay-operator-e2e-receiver:${RUN_ID}"
 FAKE_API_IMAGE="webhookrelay-operator-e2e-fake-api:${RUN_ID}"
 PRODUCTION_MODE="${WHR_OPERATOR_E2E_PRODUCTION:-false}"
@@ -149,11 +160,17 @@ helm() {
 
 build_and_import_images() {
   local archive="${RUN_DIR}/operator-image.tar"
-  log "building operator image ${IMAGE}"
-  docker build --tag "${IMAGE}" --file "${REPO_ROOT}/build/Dockerfile" "${REPO_ROOT}"
-  docker save --output "${archive}" "${IMAGE}"
-  sudo env K3S_DATA_DIR="${K3S_DATA_DIR}" "${K3S_BIN}" ctr \
-    --address /run/k3s/containerd/containerd.sock --namespace k8s.io images import "${archive}"
+  if [[ -n "${WHR_E2E_OPERATOR_IMAGE:-}" ]]; then
+    [[ "${IMAGE}" == *@sha256:* || "${OPERATOR_IMAGE_REPOSITORY}" != "${IMAGE}" ]] || \
+      fail "WHR_E2E_OPERATOR_IMAGE must use a version tag or sha256 digest"
+    log "using published operator image ${IMAGE}"
+  else
+    log "building operator image ${IMAGE}"
+    docker build --tag "${IMAGE}" --file "${REPO_ROOT}/build/Dockerfile" "${REPO_ROOT}"
+    docker save --output "${archive}" "${IMAGE}"
+    sudo env K3S_DATA_DIR="${K3S_DATA_DIR}" "${K3S_BIN}" ctr \
+      --address /run/k3s/containerd/containerd.sock --namespace k8s.io images import "${archive}"
+  fi
 
   if [[ "${PRODUCTION_MODE}" == "false" ]]; then
     archive="${RUN_DIR}/fake-api-image.tar"
@@ -179,9 +196,10 @@ install_operator() {
   log "installing the chart"
   helm_args=(upgrade --install webhookrelay-operator "${CANDIDATE_CHART}" \
     --namespace "${NAMESPACE}" --create-namespace --wait --timeout 180s \
-    --set-string image.repository=webhookrelay-operator-e2e \
-    --set-string "image.tag=${RUN_ID}" \
-    --set image.pullPolicy=IfNotPresent)
+    --set-string "image.repository=${OPERATOR_IMAGE_REPOSITORY}" \
+    --set-string "image.tag=${OPERATOR_IMAGE_TAG}" \
+    --set-string "image.digest=${OPERATOR_IMAGE_DIGEST}" \
+    --set "image.pullPolicy=${OPERATOR_PULL_POLICY}")
   if [[ "${PRODUCTION_MODE}" == "false" ]]; then
     helm_args+=(--set-string apiEndpointURL=http://relay-api:8080/v1)
   fi
@@ -191,6 +209,14 @@ install_operator() {
       .spec.template.spec.serviceAccountName == "webhookrelay-operator" and
       .spec.template.spec.containers[0].image == $image
     ' >/dev/null || fail "operator Deployment wiring is invalid"
+  if [[ -n "${WHR_E2E_OPERATOR_INDEX_DIGEST:-}" ]]; then
+    kubectl -n "${NAMESPACE}" get pods -l app.kubernetes.io/name=webhookrelay-operator -o json | \
+      jq -e --arg digest "${WHR_E2E_OPERATOR_INDEX_DIGEST}" '
+        (.items | length) == 1 and
+        all(.items[]; any(.status.containerStatuses[]?;
+          .name == "webhookrelay-operator" and (.imageID | endswith($digest))))
+      ' >/dev/null || fail "operator pod did not run the expected image index digest"
+  fi
 }
 
 install_fake_api() {
@@ -554,6 +580,7 @@ exercise_reconcile() {
     wait_for_isolated_condition Ready False AgentNotReady
     log "recovering isolated agent Deployment from an invalid image"
     apply_isolated_forward operator-e2e-v1 true "${expected_agent_image}"
+    wait_for_object_creation deployment/e2e-forward-whr-deployment
     kubectl -n "${NAMESPACE}" rollout status deployment/e2e-forward-whr-deployment --timeout=180s
     wait_for_isolated_condition AgentReady True DeploymentAvailable
     wait_for_isolated_condition Ready True Ready
@@ -625,6 +652,7 @@ exercise_production_reconcile() {
     '.[] | select(.name == $name) | .outputs[] | select(.name == "e2e-replay-output") | .id' "${RUN_DIR}/production-buckets.json")"
   [[ -n "${bucket_id}" && -n "${input_id}" && -n "${output_id}" && -n "${replay_output_id}" ]] || fail "production resources did not converge"
 
+  wait_for_object_creation deployment/e2e-forward-whr-deployment
   kubectl -n "${NAMESPACE}" rollout status deployment/e2e-forward-whr-deployment --timeout=180s
   for _ in $(seq 1 60); do
     kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o json \
@@ -745,6 +773,17 @@ wait_for_object_deletion() {
   fail "${resource} was not deleted"
 }
 
+wait_for_object_creation() {
+  local resource="$1"
+  for _ in $(seq 1 60); do
+    if kubectl -n "${NAMESPACE}" get "${resource}" >/dev/null 2>&1; then
+      return
+    fi
+    sleep 1
+  done
+  fail "${resource} was not created"
+}
+
 scale_operator_to_zero() {
   kubectl -n "${NAMESPACE}" scale deployment/webhookrelay-operator --replicas=0 >/dev/null
   for _ in $(seq 1 60); do
@@ -862,9 +901,10 @@ exercise_helm_lifecycle() {
   log "upgrading the published chart to the packaged candidate"
   helm upgrade webhookrelay-operator "${CANDIDATE_CHART}" --namespace "${NAMESPACE}" \
     --wait --timeout 180s \
-    --set-string image.repository=webhookrelay-operator-e2e \
-    --set-string "image.tag=${RUN_ID}" \
-    --set image.pullPolicy=IfNotPresent \
+    --set-string "image.repository=${OPERATOR_IMAGE_REPOSITORY}" \
+    --set-string "image.tag=${OPERATOR_IMAGE_TAG}" \
+    --set-string "image.digest=${OPERATOR_IMAGE_DIGEST}" \
+    --set "image.pullPolicy=${OPERATOR_PULL_POLICY}" \
     --set-string apiEndpointURL=http://relay-api:8080/v1
   assert_helm_revision 2
   kubectl -n "${NAMESPACE}" rollout status deployment/webhookrelay-operator --timeout=120s
@@ -874,6 +914,7 @@ exercise_helm_lifecycle() {
     -o jsonpath='{.spec.buckets[0].outputs[0].function_id}')" == \
     "00000000-0000-0000-0000-000000000000" ]] || fail "legacy function_id was not retained"
   wait_for_isolated_routing_status Configured
+  wait_for_object_creation deployment/e2e-forward-whr-deployment
   kubectl -n "${NAMESPACE}" rollout status deployment/e2e-forward-whr-deployment --timeout=120s
   fake_api_state | jq -e --arg name "${BUCKET_NAME}-lifecycle" '
     any(.buckets[]; .name == $name and

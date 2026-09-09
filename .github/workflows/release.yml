@@ -1,0 +1,270 @@
+name: Operator Release
+
+on:
+  push:
+    tags:
+      - "0.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operator-release
+  cancel-in-progress: false
+
+env:
+  OPERATOR_VERSION: 0.8.0
+  CHART_VERSION: 0.7.0
+  AGENT_VERSION: 1.37.0
+  OPERATOR_IMAGE: webhookrelay/webhookrelay-operator:build-${{ github.sha }}
+
+jobs:
+  metadata:
+    name: Validate release mapping
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.27.1"
+      - name: Validate tag and version mapping
+        run: ./.scripts/image-release.sh validate-source
+      - name: Re-run source and generated-asset gates
+        run: |
+          make test
+          make golangci-lint
+          make lint
+          make go-gen
+          git diff --exit-code
+          ./.test/install-helm.sh .test/helm
+          make chart-release-check HELM_BIN=.test/helm
+
+  image:
+    name: Publish immutable operator image
+    needs: metadata
+    runs-on: ubuntu-latest
+    environment: release
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.27.1"
+      - uses: imjasonh/setup-ko@61b4d1d396f5b2e7d6bb6fefdce3dc38d1a13445 # v0.10
+        with:
+          version: v0.18.1
+        env:
+          KO_DOCKER_REPO: webhookrelay/webhookrelay-operator
+      - name: Authenticate to Docker Hub
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: printf '%s' "${DOCKER_PASSWORD}" | ko login docker.io --username "${DOCKER_USERNAME}" --password-stdin
+      - id: build
+        name: Build or resume immutable image
+        run: |
+          ./.scripts/image-release.sh build > operator-image.json
+          echo "digest=$(jq -r .digest operator-image.json)" >> "${GITHUB_OUTPUT}"
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: operator-image-${{ github.ref_name }}-${{ github.run_id }}
+          path: operator-image.json
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+  image-validation:
+    name: Verify and smoke multi-architecture images
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - id: verify
+        name: Verify manifests, provenance labels, and executability
+        run: |
+          ./.scripts/image-release.sh verify-smoke '${{ needs.image.outputs.digest }}' > release-images.json
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-images-${{ github.ref_name }}-${{ github.run_id }}
+          path: release-images.json
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+  production:
+    name: Production live delivery
+    needs: [image, image-validation]
+    uses: ./.github/workflows/production-e2e.yml
+    with:
+      operator_image: webhookrelay/webhookrelay-operator@${{ needs.image.outputs.digest }}
+      operator_index_digest: ${{ needs.image.outputs.digest }}
+      agent_image: webhookrelay/webhookrelayd-ubi8@sha256:79d86f8dbc71831a16a2e1cd826b5a90a4c5a8a165fc53e62f43243b8274fb22
+    secrets: inherit
+
+  version-promotion:
+    name: Promote immutable operator version
+    needs: [image, production]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - run: ./.scripts/image-release.sh promote-version '${{ needs.image.outputs.digest }}'
+
+  chart-publication:
+    name: Validate and publish immutable chart
+    needs: [image, image-validation, version-promotion]
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/chart-release.yml
+    with:
+      operator_version: 0.8.0
+      chart_version: 0.7.0
+      publish: true
+      operator_image: webhookrelay/webhookrelay-operator@${{ needs.image.outputs.digest }}
+      operator_index_digest: ${{ needs.image.outputs.digest }}
+    secrets: inherit
+
+  promote:
+    name: Promote operator latest
+    needs: [image, chart-publication]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Promote without rebuilding
+        run: ./.scripts/image-release.sh promote-latest '${{ needs.image.outputs.digest }}'
+
+  release:
+    name: Create GitHub release last
+    needs: [image, promote]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: helm-chart-0.7.0-${{ github.run_id }}
+          path: release-assets
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: operator-image-${{ github.ref_name }}-${{ github.run_id }}
+          path: release-assets
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-images-${{ github.ref_name }}-${{ github.run_id }}
+          path: release-assets
+      - name: Cross-check release metadata
+        env:
+          OPERATOR_DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          (cd release-assets && sha256sum --check --strict webhookrelay-operator-0.7.0.tgz.sha256)
+          chart_sha=$(awk '{print $1}' release-assets/webhookrelay-operator-0.7.0.tgz.sha256)
+          jq -e --arg revision "${GITHUB_SHA}" --arg digest "${OPERATOR_DIGEST}" '
+            .revision == $revision and .digest == $digest and
+            ([.platforms[] | .os + "/" + .architecture] | sort) == ["linux/amd64","linux/arm64"]
+          ' release-assets/operator-image.json >/dev/null
+          jq -e --arg revision "${GITHUB_SHA}" --arg digest "${OPERATOR_DIGEST}" '
+            .revision == $revision and .operator.digest == $digest and
+            .agent.digest == "sha256:4d73b9e6096d4d653c3b46733aa4dbf45dfde1ed1e5f142da8da5a396eb9ffab" and
+            .agentUbi.digest == "sha256:79d86f8dbc71831a16a2e1cd826b5a90a4c5a8a165fc53e62f43243b8274fb22" and
+            all(.operator,.agent,.agentUbi;
+              ([.platforms[] | .os + "/" + .architecture] | sort) == ["linux/amd64","linux/arm64"])
+          ' release-assets/release-images.json >/dev/null
+          jq -e --arg sha "${chart_sha}" '
+            .operatorVersion == "0.8.0" and .chartVersion == "0.7.0" and
+            .agentImage == "webhookrelay/webhookrelayd-ubi8:1.37.0" and .sha256 == $sha
+          ' release-assets/release-metadata.json >/dev/null
+      - name: Write release notes
+        env:
+          OPERATOR_DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          cat > release-notes.md <<EOF
+          Operator 0.8.0, Helm chart 0.7.0, and relay agent 1.37.0.
+
+          - Operator image: \`webhookrelay/webhookrelay-operator:0.8.0@${OPERATOR_DIGEST}\`
+          - Helm chart SHA-256: \`$(awk '{print $1}' release-assets/webhookrelay-operator-0.7.0.tgz.sha256)\`
+          - Relay agent: \`webhookrelay/webhookrelayd:1.37.0@sha256:4d73b9e6096d4d653c3b46733aa4dbf45dfde1ed1e5f142da8da5a396eb9ffab\`
+          - UBI relay agent: \`webhookrelay/webhookrelayd-ubi8:1.37.0@sha256:79d86f8dbc71831a16a2e1cd826b5a90a4c5a8a165fc53e62f43243b8274fb22\`
+
+          This release passed amd64/arm64 smoke tests, packaged-chart lifecycle tests,
+          and production Webhook Relay delivery including function transformations.
+          EOF
+      - name: Create or resume matching draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          verify_remote_tag() {
+            remote_sha=$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}^{}" | awk '{print $1}')
+            if [ -z "${remote_sha}" ]; then
+              remote_sha=$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}" | awk '{print $1}')
+            fi
+            test "${remote_sha}" = "${GITHUB_SHA}"
+          }
+          verify_remote_tag
+          mkdir existing-assets
+          if gh release view "${GITHUB_REF_NAME}" --json name,body,isDraft,targetCommitish,assets > release-state.json 2>/dev/null; then
+            ./.scripts/verify-release-state.sh release-state.json release-notes.md "${GITHUB_REF_NAME}"
+            if [ "$(jq '.assets | length' release-state.json)" != 0 ]; then
+              gh release download "${GITHUB_REF_NAME}" --dir existing-assets
+              for asset in existing-assets/*; do
+                cmp "${asset}" "release-assets/$(basename "${asset}")"
+              done
+            fi
+          else
+            gh release create "${GITHUB_REF_NAME}" --verify-tag --draft \
+              --title "${GITHUB_REF_NAME}" --notes-file release-notes.md
+          fi
+          for asset in release-assets/*; do
+            if [ ! -f "existing-assets/$(basename "${asset}")" ]; then
+              gh release upload "${GITHUB_REF_NAME}" "${asset}"
+            fi
+          done
+      - name: Verify assets and publish as final mutation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          remote_sha=$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}^{}" | awk '{print $1}')
+          if [ -z "${remote_sha}" ]; then
+            remote_sha=$(git ls-remote origin "refs/tags/${GITHUB_REF_NAME}" | awk '{print $1}')
+          fi
+          test "${remote_sha}" = "${GITHUB_SHA}"
+          gh release view "${GITHUB_REF_NAME}" --json name,body,isDraft,assets > final-release-state.json
+          ./.scripts/verify-release-state.sh final-release-state.json release-notes.md "${GITHUB_REF_NAME}"
+          test "$(jq '.assets | length' final-release-state.json)" = 5
+          mkdir downloaded-assets
+          gh release download "${GITHUB_REF_NAME}" --dir downloaded-assets
+          for asset in release-assets/*; do
+            cmp "${asset}" "downloaded-assets/$(basename "${asset}")"
+          done
+          if jq -e .isDraft final-release-state.json >/dev/null; then
+            gh release edit "${GITHUB_REF_NAME}" --draft=false
+          fi

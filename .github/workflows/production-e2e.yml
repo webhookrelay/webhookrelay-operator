@@ -1,6 +1,25 @@
 name: Production End-to-End Validation
 
 on:
+  workflow_call:
+    inputs:
+      operator_image:
+        description: Immutable operator image reference to validate
+        required: true
+        type: string
+      agent_image:
+        description: Relay-agent image to validate
+        required: true
+        type: string
+      operator_index_digest:
+        description: Expected operator OCI index digest
+        required: true
+        type: string
+    secrets:
+      WHR_E2E_RELAY_KEY:
+        required: true
+      WHR_E2E_RELAY_SECRET:
+        required: true
   workflow_dispatch:
     inputs:
       confirmation:
@@ -12,6 +31,16 @@ on:
         required: false
         default: webhookrelay/webhookrelayd-ubi8:1.37.0
         type: string
+      operator_image:
+        description: Published operator image to validate; blank builds the checkout
+        required: false
+        default: ""
+        type: string
+      operator_index_digest:
+        description: Optional expected operator OCI index digest
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -19,9 +48,9 @@ permissions:
 jobs:
   production-e2e:
     name: Production Live Delivery (k3s)
-    if: inputs.confirmation == 'production'
+    if: github.event_name == 'workflow_call' || inputs.confirmation == 'production'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 22
     environment: production
     env:
       WHR_OPERATOR_E2E_PRODUCTION: "true"
@@ -30,12 +59,19 @@ jobs:
       WHR_E2E_RELAY_SECRET: ${{ secrets.WHR_E2E_RELAY_SECRET }}
       WHR_E2E_FUNCTION_ID: ${{ vars.WHR_E2E_FUNCTION_ID }}
       WHR_E2E_AGENT_IMAGE: ${{ inputs.agent_image }}
+      WHR_E2E_OPERATOR_IMAGE: ${{ inputs.operator_image }}
+      WHR_E2E_OPERATOR_INDEX_DIGEST: ${{ inputs.operator_index_digest }}
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Validate production reconciliation and live delivery
+        timeout-minutes: 17
         run: make e2e
+
+      - name: Verify exact cleanup after failure or cancellation
+        if: always()
+        run: ./.test/cleanup-production.sh
 
       - name: Upload failure diagnostics
         if: failure() || cancelled()

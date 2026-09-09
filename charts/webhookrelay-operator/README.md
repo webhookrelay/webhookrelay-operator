@@ -26,6 +26,15 @@ helm upgrade webhookrelay-operator webhookrelay/webhookrelay-operator \
   --namespace webhookrelay --version "${CHART_VERSION}" --wait
 ```
 
+For an immutable deployment, set `image.digest` to the published multi-platform
+operator index digest. It takes precedence over `image.tag`:
+
+```sh
+helm upgrade --install webhookrelay-operator webhookrelay/webhookrelay-operator \
+  --namespace webhookrelay --create-namespace --version "${CHART_VERSION}" \
+  --set-string image.digest=sha256:REPLACE_WITH_RELEASE_DIGEST
+```
+
 Uninstalling the chart leaves the CRD and all `WebhookRelayForward` objects in
 place. Delete those objects before uninstalling if their owned relay-agent
 Deployments should be garbage-collected. Delete the CRD separately only when
