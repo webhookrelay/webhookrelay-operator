@@ -2,14 +2,14 @@ package webhookrelayforward
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -30,6 +30,8 @@ import (
 
 var log = logf.Log.WithName("controller_webhookrelayforward")
 
+var errStatusGenerationChanged = errors.New("object generation changed while updating status")
+
 const (
 	reconcilePeriodSeconds = 5
 
@@ -44,6 +46,8 @@ const (
 	forwarderLabelKey              = "name"
 	forwarderLabelValue            = "webhookrelay-forwarder"
 	reasonDeploymentAvailable      = "DeploymentAvailable"
+	reasonDeploymentNotObserved    = "DeploymentNotObserved"
+	reasonDeploymentUnavailable    = "DeploymentUnavailable"
 	reasonProgressDeadlineExceeded = "ProgressDeadlineExceeded"
 )
 
@@ -102,7 +106,7 @@ func (r *ReconcileWebhookRelayForward) Reconcile(ctx context.Context, request ct
 	instance := &forwardv1.WebhookRelayForward{}
 	err := r.client.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
@@ -145,11 +149,7 @@ func (r *ReconcileWebhookRelayForward) Reconcile(ctx context.Context, request ct
 			instance,
 		)
 		if updateErr != nil {
-			if !strings.Contains(updateErr.Error(), "Operation cannot be fulfille") {
-				logger.Error(updateErr, "Failed to update CR routing configuration status",
-					"status", forwardv1.AgentStatusCreating,
-				)
-			}
+			return reconcileResult, updateErr
 		}
 		if requeue {
 			logger.Info("routing status updated, requeuing")
@@ -165,7 +165,7 @@ func (r *ReconcileWebhookRelayForward) Reconcile(ctx context.Context, request ct
 			instance,
 		)
 		if updateErr != nil {
-			logger.Error(updateErr, "Failed to update CR status")
+			return reconcileResult, updateErr
 		}
 		if requeue {
 			logger.Info("routing status updated, requeuing")
@@ -244,6 +244,9 @@ func (r *ReconcileWebhookRelayForward) patchStatus(
 		if err := r.client.Get(ctx, client.ObjectKeyFromObject(instance), current); err != nil {
 			return err
 		}
+		if current.Generation != instance.Generation {
+			return errStatusGenerationChanged
+		}
 		base := current.DeepCopy()
 		mutate(&current.Status, current.Generation)
 		current.Status.ObservedGeneration = current.Generation
@@ -315,7 +318,7 @@ func (r *ReconcileWebhookRelayForward) reconcile(ctx context.Context, logger log
 	// Check if this Deployment already exists
 	found := &appsv1.Deployment{}
 	err := r.client.Get(ctx, types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
+	if err != nil && apierrors.IsNotFound(err) {
 		logger.Info("Creating a new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
 		err = r.client.Create(ctx, deployment)
 		if err != nil {
@@ -351,7 +354,7 @@ func (r *ReconcileWebhookRelayForward) reconcile(ctx context.Context, logger log
 	// compare image, buckets
 	patched, equals := r.checkDeployment(instance, found)
 	if equals {
-		ready, reason, message := deploymentReadiness(found)
+		ready, reason, message := deploymentReadiness(found, *deployment.Spec.Replicas)
 		agentStatus := forwardv1.AgentStatusCreating
 		if ready {
 			agentStatus = forwardv1.AgentStatusRunning
@@ -392,7 +395,10 @@ func (r *ReconcileWebhookRelayForward) reconcile(ctx context.Context, logger log
 	return updateErr
 }
 
-func deploymentReadiness(deployment *appsv1.Deployment) (ready bool, reason, message string) {
+func deploymentReadiness(deployment *appsv1.Deployment, desired int32) (ready bool, reason, message string) {
+	if deployment.Status.ObservedGeneration < deployment.Generation {
+		return false, reasonDeploymentNotObserved, "agent Deployment controller has not observed the latest generation"
+	}
 	for i := range deployment.Status.Conditions {
 		condition := deployment.Status.Conditions[i]
 		if condition.Type == appsv1.DeploymentProgressing && condition.Status == corev1.ConditionFalse &&
@@ -400,16 +406,12 @@ func deploymentReadiness(deployment *appsv1.Deployment) (ready bool, reason, mes
 			return false, reasonProgressDeadlineExceeded, "agent Deployment exceeded its progress deadline"
 		}
 	}
-	if deployment.Status.ObservedGeneration < deployment.Generation {
-		return false, "DeploymentNotObserved", "agent Deployment controller has not observed the latest generation"
-	}
-	desired := int32(1)
-	if deployment.Spec.Replicas != nil {
-		desired = *deployment.Spec.Replicas
+	if desired <= 0 {
+		return false, "InvalidReplicaCount", "agent Deployment must have at least one desired replica"
 	}
 	if deployment.Status.ReadyReplicas != desired || deployment.Status.UpdatedReplicas != desired ||
 		deployment.Status.AvailableReplicas != desired || deployment.Status.UnavailableReplicas != 0 {
-		return false, "DeploymentUnavailable", "agent Deployment rollout is not available"
+		return false, reasonDeploymentUnavailable, "agent Deployment rollout is not available"
 	}
 	return true, reasonDeploymentAvailable, "agent Deployment rollout is available"
 }

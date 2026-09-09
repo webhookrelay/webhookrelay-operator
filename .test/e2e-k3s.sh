@@ -344,18 +344,33 @@ wait_for_isolated_routing_status() {
 wait_for_isolated_condition() {
   local condition_type="$1"
   local expected_status="$2"
+  local expected_reason="${3:-}"
   for _ in $(seq 1 90); do
     if kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o json | jq -e \
-      --arg type "${condition_type}" --arg status "${expected_status}" '
+      --arg type "${condition_type}" --arg status "${expected_status}" --arg reason "${expected_reason}" '
         .metadata.generation as $generation |
         any(.status.conditions[]?;
-          .type == $type and .status == $status and .observedGeneration == $generation)
+          .type == $type and .status == $status and .observedGeneration == $generation and
+          ($reason == "" or .reason == $reason))
       ' >/dev/null; then
       return
     fi
     sleep 1
   done
   fail "isolated CR condition ${condition_type} did not reach ${expected_status} for its current generation"
+}
+
+wait_for_isolated_image_pull_failure() {
+  for _ in $(seq 1 90); do
+    if kubectl -n "${NAMESPACE}" get pods -l name=webhookrelay-forwarder -o json | jq -e '
+      any(.items[].status.containerStatuses[]?.state.waiting.reason;
+        . == "ErrImagePull" or . == "ImagePullBackOff")
+    ' >/dev/null; then
+      return
+    fi
+    sleep 1
+  done
+  fail "isolated agent pod did not report ErrImagePull or ImagePullBackOff"
 }
 
 exercise_isolated_reconcile() {
@@ -518,13 +533,18 @@ exercise_reconcile() {
   local expected_agent_image="registry.k8s.io/pause:3.10"
   [[ "${PRODUCTION_MODE}" != "true" ]] || expected_agent_image="${AGENT_IMAGE}"
   if [[ "${PRODUCTION_MODE}" != "true" ]]; then
-    wait_for_isolated_condition AgentReady False
-    wait_for_isolated_condition Ready False
+    wait_for_isolated_image_pull_failure
+    wait_for_isolated_condition AgentReady False DeploymentUnavailable
+    wait_for_isolated_condition Ready False AgentNotReady
     log "recovering isolated agent Deployment from an invalid image"
     apply_isolated_forward operator-e2e-v1 true "${expected_agent_image}"
     kubectl -n "${NAMESPACE}" rollout status deployment/e2e-forward-whr-deployment --timeout=180s
-    wait_for_isolated_condition AgentReady True
-    wait_for_isolated_condition Ready True
+    wait_for_isolated_condition AgentReady True DeploymentAvailable
+    wait_for_isolated_condition Ready True Ready
+    kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o json | jq -e '
+      .metadata.generation == .status.observedGeneration and
+      .status.agentStatus == "Running" and .status.ready == true
+    ' >/dev/null || fail "legacy readiness mirrors or observedGeneration are inconsistent"
   fi
   kubectl -n "${NAMESPACE}" get deployment/e2e-forward-whr-deployment -o json \
     >"${ARTIFACT_DIR}/reconciled-deployment.json"

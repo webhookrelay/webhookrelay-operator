@@ -54,6 +54,24 @@ func TestContainersEqualDetectsResourceChanges(t *testing.T) {
 	assert.False(t, containersEqual(current, desired))
 }
 
+func TestCheckDeploymentRestoresScaledDownReplica(t *testing.T) {
+	instance := &forwardv1.WebhookRelayForward{
+		ObjectMeta: metav1.ObjectMeta{Name: testForwardName, Namespace: testForwardNamespace},
+		Spec: forwardv1.WebhookRelayForwardSpec{ // #nosec G101 -- SecretRefName is an object name, not credential material.
+			SecretRefName: testSecretObjectName,
+		},
+	}
+	reconciler := &ReconcileWebhookRelayForward{config: &config.Config{}}
+	current := reconciler.newDeploymentForCR(instance)
+	current.Spec.Replicas = toInt32(0)
+
+	patched, equal := reconciler.checkDeployment(instance, current)
+
+	assert.False(t, equal)
+	require.NotNil(t, patched.Spec.Replicas)
+	assert.Equal(t, int32(1), *patched.Spec.Replicas)
+}
+
 func envValue(env []corev1.EnvVar, name string) string {
 	for i := range env {
 		if env[i].Name == name {

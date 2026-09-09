@@ -291,6 +291,8 @@ type WebhookRelayForwardStatus struct {
 	// ObservedGeneration is the latest spec generation reflected in status.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// Conditions report routing, agent rollout, and aggregate readiness.
+	// +listType=map
+	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	RoutingStatus RoutingStatus `json:"routingStatus,omitempty"`
