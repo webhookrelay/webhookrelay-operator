@@ -16,6 +16,10 @@ credentials:
 
 httpsProxy: ""
 
+# Trusted operator-wide Relay API base URL. Do not point this at an endpoint
+# you do not administer because Relay credentials are sent to it.
+apiEndpointURL: "https://my.webhookrelay.com/v1"
+
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""

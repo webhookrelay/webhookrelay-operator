@@ -74,7 +74,7 @@ func (r *ReconcileWebhookRelayForward) setClientForCluster(ctx context.Context, 
 		return ErrCredentialsNotProvided
 	}
 
-	var options []webhookrelay.Option
+	options := []webhookrelay.Option{webhookrelay.WithAPIEndpointURL(r.config.APIEndpointURL)}
 
 	if r.config.HTTPSPRoxy != "" {
 		proxyURL, err := url.Parse(r.config.HTTPSPRoxy)

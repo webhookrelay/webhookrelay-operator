@@ -22,6 +22,7 @@ K3S_CLIENT_DATA_DIR="${RUN_DIR}/client-data"
 NAMESPACE="webhookrelay-operator-e2e"
 IMAGE="webhookrelay-operator-e2e:${RUN_ID}"
 RECEIVER_IMAGE="webhookrelay-operator-e2e-receiver:${RUN_ID}"
+FAKE_API_IMAGE="webhookrelay-operator-e2e-fake-api:${RUN_ID}"
 PRODUCTION_MODE="${WHR_OPERATOR_E2E_PRODUCTION:-false}"
 AGENT_IMAGE="${WHR_E2E_AGENT_IMAGE:-webhookrelay/webhookrelayd-ubi8:latest}"
 FUNCTION_ID="${WHR_E2E_FUNCTION_ID:-}"
@@ -138,7 +139,15 @@ build_and_import_images() {
   sudo env K3S_DATA_DIR="${K3S_DATA_DIR}" "${K3S_BIN}" ctr \
     --address /run/k3s/containerd/containerd.sock --namespace k8s.io images import "${archive}"
 
-  if [[ "${PRODUCTION_MODE}" == "true" ]]; then
+  if [[ "${PRODUCTION_MODE}" == "false" ]]; then
+    archive="${RUN_DIR}/fake-api-image.tar"
+    log "building fake Relay API image ${FAKE_API_IMAGE}"
+    docker build --tag "${FAKE_API_IMAGE}" \
+      --file "${REPO_ROOT}/.test/fake-api/Dockerfile" "${REPO_ROOT}"
+    docker save --output "${archive}" "${FAKE_API_IMAGE}"
+    sudo env K3S_DATA_DIR="${K3S_DATA_DIR}" "${K3S_BIN}" ctr \
+      --address /run/k3s/containerd/containerd.sock --namespace k8s.io images import "${archive}"
+  else
     archive="${RUN_DIR}/receiver-image.tar"
     log "building delivery receiver image ${RECEIVER_IMAGE}"
     docker build --tag "${RECEIVER_IMAGE}" \
@@ -158,7 +167,7 @@ install_operator() {
     --set-string "image.tag=${RUN_ID}" \
     --set image.pullPolicy=IfNotPresent)
   if [[ "${PRODUCTION_MODE}" == "false" ]]; then
-    helm_args+=(--set-string httpsProxy=http://127.0.0.1:9)
+    helm_args+=(--set-string apiEndpointURL=http://relay-api:8080/v1)
   fi
   helm "${helm_args[@]}"
   kubectl -n "${NAMESPACE}" rollout status deployment/webhookrelay-operator --timeout=120s
@@ -166,6 +175,52 @@ install_operator() {
       .spec.template.spec.serviceAccountName == "webhookrelay-operator" and
       .spec.template.spec.containers[0].image == $image
     ' >/dev/null || fail "operator Deployment wiring is invalid"
+}
+
+install_fake_api() {
+  [[ "${PRODUCTION_MODE}" == "false" ]] || return 0
+  kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay-api
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: relay-api
+  template:
+    metadata:
+      labels:
+        app: relay-api
+    spec:
+      containers:
+        - name: api
+          image: ${FAKE_API_IMAGE}
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: relay-api
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: relay-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+EOF
+  kubectl -n "${NAMESPACE}" rollout status deployment/relay-api --timeout=120s
 }
 
 install_receiver() {
@@ -253,6 +308,60 @@ spec:
           disabled: true
           internal: false
 EOF
+}
+
+fake_api_state() {
+  kubectl get --raw "/api/v1/namespaces/${NAMESPACE}/services/http:relay-api:8080/proxy/v1/state"
+}
+
+wait_for_isolated_routing_status() {
+  local expected="$1"
+  for _ in $(seq 1 60); do
+    if [[ "$(kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o jsonpath='{.status.routingStatus}' 2>/dev/null)" == "${expected}" ]]; then
+      return
+    fi
+    sleep 1
+  done
+  fail "isolated CR did not reach routing status ${expected}"
+}
+
+exercise_isolated_reconcile() {
+  local before after
+  wait_for_isolated_routing_status Configured
+  fake_api_state >"${ARTIFACT_DIR}/isolated-state-v1.json"
+  jq -e --arg name "${BUCKET_NAME}" '
+    any(.buckets[]; .name == $name and .description != "" and
+      any(.inputs[]; .name == "e2e-input" and .body == "operator-e2e-v1") and
+      any(.outputs[]; .name == "e2e-output" and .disabled == true)) and
+    .mutations.createBucket == 1 and .mutations.createInput == 1 and .mutations.createOutput == 1
+  ' "${ARTIFACT_DIR}/isolated-state-v1.json" >/dev/null || fail "fake API did not observe initial convergence"
+
+  log "updating isolated routing configuration"
+  apply_isolated_forward operator-e2e-v2
+  for _ in $(seq 1 60); do
+    fake_api_state >"${ARTIFACT_DIR}/isolated-state-v2.json"
+    if jq -e --arg name "${BUCKET_NAME}" '
+      any(.buckets[]; .name == $name and any(.inputs[]; .name == "e2e-input" and .body == "operator-e2e-v2")) and
+      .mutations.updateInput == 1
+    ' "${ARTIFACT_DIR}/isolated-state-v2.json" >/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  jq -e '.mutations.updateInput == 1' "${ARTIFACT_DIR}/isolated-state-v2.json" >/dev/null || fail "fake API did not observe the input update"
+
+  before="$(jq -c '.mutations' "${ARTIFACT_DIR}/isolated-state-v2.json")"
+  sleep 7
+  fake_api_state >"${ARTIFACT_DIR}/isolated-state-idempotent.json"
+  after="$(jq -c '.mutations' "${ARTIFACT_DIR}/isolated-state-idempotent.json")"
+  [[ "${before}" == "${after}" ]] || fail "isolated reconcile was not idempotent"
+
+  log "testing isolated API failure and recovery"
+  kubectl -n "${NAMESPACE}" patch webhookrelayforward/e2e-forward --type=json \
+    -p='[{"op":"add","path":"/spec/buckets/-","value":{"name":"force-error","inputs":[],"outputs":[]}}]'
+  wait_for_isolated_routing_status Failed
+  apply_isolated_forward operator-e2e-v2
+  wait_for_isolated_routing_status Configured
 }
 
 apply_production_forward() {
@@ -387,10 +496,7 @@ exercise_reconcile() {
   if [[ "${PRODUCTION_MODE}" == "true" ]]; then
     exercise_production_reconcile
   else
-    kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward -o json \
-      >"${ARTIFACT_DIR}/reconciled-forward.json"
-    jq -e '.status.routingStatus == "Failed"' "${ARTIFACT_DIR}/reconciled-forward.json" >/dev/null || \
-      fail "the CR did not report the expected isolated API failure"
+    exercise_isolated_reconcile
   fi
 }
 
@@ -579,6 +685,8 @@ collect_diagnostics() {
     >"${ARTIFACT_DIR}/operator-deployment.txt" 2>&1 || true
   kubectl -n "${NAMESPACE}" logs deployment/webhookrelay-operator --all-containers \
     >"${ARTIFACT_DIR}/operator.log" 2>&1 || true
+  kubectl -n "${NAMESPACE}" logs deployment/relay-api --all-containers \
+    >"${ARTIFACT_DIR}/fake-api.log" 2>&1 || true
   kubectl -n "${NAMESPACE}" logs deployment/e2e-forward-whr-deployment --all-containers \
     >"${ARTIFACT_DIR}/relay-agent.log" 2>&1 || true
   kubectl -n "${NAMESPACE}" logs deployment/e2e-receiver --all-containers \
@@ -624,6 +732,7 @@ preflight
 download_tools
 start_k3s
 build_and_import_images
+install_fake_api
 install_operator
 install_receiver
 exercise_reconcile
