@@ -49,7 +49,11 @@ existing version/digest/URL entry, and uses that same generation as the update
 precondition. The chart object uses a zero-generation creation precondition, so
 it cannot replace an existing object. Retries accept an authoritative object
 only when its bytes are identical, including the partial-success case where the
-chart exists but the index update failed. After upload, bounded polling waits
-for the public artifact and index to expose the same bytes, digest, and URL.
+chart exists but the index update failed. The mutable index is uploaded with
+`Cache-Control: no-cache,max-age=0,must-revalidate`, and the publisher verifies
+that policy from authoritative object metadata. Public verification requests
+revalidation, then bounded polling waits for the artifact and index to expose
+the same bytes, digest, and URL. The existing index received the same metadata
+policy as a one-time migration before this pipeline was enabled.
 This prevents the stale-index mismatch previously reported by Artifact Hub.
 The workflow never creates a GitHub release.

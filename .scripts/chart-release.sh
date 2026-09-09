@@ -16,6 +16,7 @@ readonly ARTIFACT_PATH="${OUTPUT_DIR}/${ARTIFACT_NAME}"
 readonly CHECKSUM_PATH="${ARTIFACT_PATH}.sha256"
 readonly METADATA_PATH="${OUTPUT_DIR}/release-metadata.json"
 readonly VALIDATED_ARTIFACT="${VALIDATED_ARTIFACT:-}"
+readonly INDEX_CACHE_CONTROL="no-cache,max-age=0,must-revalidate"
 
 fail() {
   printf 'chart-release: %s\n' "$*" >&2
@@ -100,7 +101,7 @@ verify_public_repository() {
       "${REPOSITORY_URL}/${ARTIFACT_NAME}")"
     if [[ "${http_status}" == "200" ]] && \
       cmp "${ARTIFACT_PATH}" "${OUTPUT_DIR}/published-artifact.tgz" && \
-      curl --fail --location --show-error --silent \
+      curl --fail --location --show-error --silent --header 'Cache-Control: no-cache' \
         --output "${OUTPUT_DIR}/published-index.yaml" "${REPOSITORY_URL}/index.yaml" && \
       go run "${REPO_ROOT}/.scripts/chart-artifact.go" verify-index \
         "${OUTPUT_DIR}/published-index.yaml" "${CHART_VERSION}" "${digest}" \
@@ -149,7 +150,7 @@ verify_remote() {
 }
 
 publish_chart() {
-  local digest index_dir index_generation status
+  local digest index_cache_control index_dir index_generation status
   command -v gcloud >/dev/null || fail "gcloud is required to publish"
   package_chart
   if [[ -n "${VALIDATED_ARTIFACT}" ]]; then
@@ -184,7 +185,12 @@ publish_chart() {
   go run "${REPO_ROOT}/.scripts/chart-artifact.go" verify-index "${index_dir}/index.yaml" \
     "${CHART_VERSION}" "${digest}" "${REPOSITORY_URL}/${ARTIFACT_NAME}"
   gcloud storage cp "${index_dir}/index.yaml" "gs://${CHART_BUCKET}/index.yaml" \
-    --if-generation-match="${index_generation}" --content-type=application/yaml
+    --if-generation-match="${index_generation}" --content-type=application/yaml \
+    --cache-control="${INDEX_CACHE_CONTROL}"
+  index_cache_control="$(gcloud storage objects describe "gs://${CHART_BUCKET}/index.yaml" \
+    --format='value(cache_control)')"
+  [[ "${index_cache_control}" == "${INDEX_CACHE_CONTROL}" ]] || \
+    fail "published index cache policy is ${index_cache_control:-unset}, expected ${INDEX_CACHE_CONTROL}"
 
   verify_public_repository "${digest}"
 }

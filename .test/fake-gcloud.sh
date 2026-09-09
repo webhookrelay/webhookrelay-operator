@@ -21,7 +21,12 @@ case "${2:-}" in
     [[ -f "${object}" ]] || { printf 'ERROR: object not found (404)\n' >&2; exit 1; }
     generation_file="$(generation_path "$4")"
     [[ -f "${generation_file}" ]] && generation="$(<"${generation_file}")" || generation=1
-    printf '%s\n' "${generation}"
+    if [[ "$*" == *"value(cache_control)"* ]]; then
+      cache_control_file="${object}.cache-control"
+      [[ -f "${cache_control_file}" ]] && cat "${cache_control_file}"
+    else
+      printf '%s\n' "${generation}"
+    fi
     ;;
   cp)
     source_path="$3"
@@ -34,8 +39,10 @@ case "${2:-}" in
     generation_file="$(generation_path "${destination_path}")"
     [[ -f "${generation_file}" ]] && current_generation="$(<"${generation_file}")" || current_generation=0
     expected_generation=""
+    cache_control=""
     for argument in "$@"; do
       [[ "${argument}" == --if-generation-match=* ]] && expected_generation="${argument#*=}"
+      [[ "${argument}" == --cache-control=* ]] && cache_control="${argument#*=}"
     done
     if [[ "$(object_path "${destination_path}")" == "index.yaml" && \
       "${FAKE_GCS_BUMP_BEFORE_INDEX_WRITE:-false}" == "true" && \
@@ -51,6 +58,9 @@ case "${2:-}" in
     mkdir -p "$(dirname "${object}")"
     cp "${source_path}" "${object}"
     printf '%s\n' "$((current_generation + 1))" >"${generation_file}"
+    if [[ -n "${cache_control}" ]]; then
+      printf '%s\n' "${cache_control}" >"${object}.cache-control"
+    fi
     ;;
   *)
     printf 'unsupported fake gcloud storage command\n' >&2

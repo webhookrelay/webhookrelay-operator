@@ -101,6 +101,7 @@ wait "${SYNC_PID}"
 SYNC_PID=""
 go run "${REPO_ROOT}/.scripts/chart-artifact.go" verify-retained \
   "${TEST_ROOT}/publish-retry/remote-index.yaml" "${fake_store}/index.yaml"
+[[ "$(<"${fake_store}/index.yaml.cache-control")" == "no-cache,max-age=0,must-revalidate" ]]
 
 artifact_generation="$(<"${fake_store}/webhookrelay-operator-0.7.0.tgz.generation")"
 index_generation="$(<"${fake_store}/index.yaml.generation")"
