@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	webhookrelay "github.com/webhookrelay/webhookrelay-go"
 )
 
 func TestAPIRequiresAuthorizationWithoutReflectingIt(t *testing.T) {
@@ -32,6 +33,9 @@ func TestAPICreatesAndReturnsState(t *testing.T) {
 	server.ServeHTTP(response, request)
 
 	require.Equal(t, http.StatusOK, response.Code)
+	var bucket webhookrelay.Bucket
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &bucket))
+	assert.True(t, webhookrelay.IsUUID(bucket.ID))
 	stateRequest := httptest.NewRequest(http.MethodGet, "/v1/state", nil)
 	stateResponse := httptest.NewRecorder()
 	server.ServeHTTP(stateResponse, stateRequest)

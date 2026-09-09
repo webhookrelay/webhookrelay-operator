@@ -96,7 +96,7 @@ func (s *apiServer) handleBucketCollection(w http.ResponseWriter, r *http.Reques
 		}
 		now := time.Now().UTC()
 		bucket := &webhookrelay.Bucket{
-			ID:          s.id("bucket"),
+			ID:          s.id(),
 			Name:        options.Name,
 			Description: options.Description,
 			CreatedAt:   now,
@@ -141,7 +141,7 @@ func (s *apiServer) handleInputs(w http.ResponseWriter, r *http.Request, bucket 
 		if !s.decodeJSON(w, r, &input) {
 			return
 		}
-		input.ID = s.id("input")
+		input.ID = s.id()
 		input.BucketID = bucket.ID
 		input.CreatedAt = time.Now().UTC()
 		input.UpdatedAt = input.CreatedAt
@@ -199,7 +199,7 @@ func (s *apiServer) handleOutputs(w http.ResponseWriter, r *http.Request, bucket
 		if !s.decodeJSON(w, r, &output) {
 			return
 		}
-		output.ID = s.id("output")
+		output.ID = s.id()
 		output.BucketID = bucket.ID
 		output.CreatedAt = time.Now().UTC()
 		output.UpdatedAt = output.CreatedAt
@@ -256,8 +256,8 @@ func (s *apiServer) writeState(w http.ResponseWriter) {
 	}{s.buckets, s.mutations})
 }
 
-func (s *apiServer) id(prefix string) string {
-	id := fmt.Sprintf("%s-%d", prefix, s.nextID)
+func (s *apiServer) id() string {
+	id := fmt.Sprintf("00000000-0000-4000-8000-%012x", s.nextID)
 	s.nextID++
 	return id
 }
