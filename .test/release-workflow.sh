@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 readonly WORKFLOW=".github/workflows/release.yml"
+readonly PRODUCTION_WORKFLOW=".github/workflows/production-e2e.yml"
 
 job_block() {
   local job="$1"
@@ -28,6 +29,9 @@ assert_needs version-promotion '[image, production]'
 assert_needs chart-publication '[image, image-validation, version-promotion]'
 assert_needs promote '[image, chart-publication]'
 assert_needs release '[image, promote]'
+
+grep -Fqx "    if: (github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, '0.')) || (github.event_name == 'workflow_dispatch' && inputs.confirmation == 'production')" \
+  "${PRODUCTION_WORKFLOW}"
 
 [[ "$(grep -c '^  release:$' "${WORKFLOW}")" == "1" ]]
 job_block release | grep -Fq 'gh release create'

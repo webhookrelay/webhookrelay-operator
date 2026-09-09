@@ -48,7 +48,7 @@ permissions:
 jobs:
   production-e2e:
     name: Production Live Delivery (k3s)
-    if: github.event_name == 'workflow_call' || inputs.confirmation == 'production'
+    if: (github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, '0.')) || (github.event_name == 'workflow_dispatch' && inputs.confirmation == 'production')
     runs-on: ubuntu-latest
     timeout-minutes: 22
     environment: production
