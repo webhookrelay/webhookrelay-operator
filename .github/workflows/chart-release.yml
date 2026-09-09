@@ -106,7 +106,7 @@ jobs:
 
   publish:
     name: Publish immutable chart
-    if: inputs.publish
+    if: inputs.publish == true
     needs: [package, lifecycle]
     runs-on: ubuntu-latest
     environment: release
