@@ -179,6 +179,7 @@ install_operator() {
 
 install_fake_api() {
   [[ "${PRODUCTION_MODE}" == "false" ]] || return 0
+  kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
   kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -271,7 +272,19 @@ EOF
 
 apply_isolated_forward() {
   local response_body="$1"
+  local include_cleanup_routes="${2:-false}"
   local credentials_file="${RUN_DIR}/credentials.env"
+  local cleanup_input_yaml=""
+  local cleanup_output_yaml=""
+  if [[ "${include_cleanup_routes}" == "true" ]]; then
+    cleanup_input_yaml="        - name: e2e-cleanup-input
+          description: removed during reconciliation"
+    cleanup_output_yaml="        - name: e2e-cleanup-output
+          description: removed during reconciliation
+          destination: https://example.invalid/operator-e2e-cleanup
+          disabled: true
+          internal: false"
+  fi
   umask 077
   printf 'key=e2e-invalid-key\nsecret=e2e-invalid-secret\n' >"${credentials_file}"
   kubectl -n "${NAMESPACE}" create secret generic e2e-credentials \
@@ -301,12 +314,14 @@ spec:
           description: ${BUCKET_DESCRIPTION}
           responseBody: ${response_body}
           responseStatusCode: 202
+${cleanup_input_yaml}
       outputs:
         - name: e2e-output
           description: ${BUCKET_DESCRIPTION}
           destination: https://example.invalid/operator-e2e
           disabled: true
           internal: false
+${cleanup_output_yaml}
 EOF
 }
 
@@ -333,7 +348,10 @@ exercise_isolated_reconcile() {
     any(.buckets[]; .name == $name and .description != "" and
       any(.inputs[]; .name == "e2e-input" and .body == "operator-e2e-v1") and
       any(.outputs[]; .name == "e2e-output" and .disabled == true)) and
-    .mutations.createBucket == 1 and .mutations.createInput == 1 and .mutations.createOutput == 1
+    any(.buckets[]; .name == $name and
+      any(.inputs[]; .name == "e2e-cleanup-input") and
+      any(.outputs[]; .name == "e2e-cleanup-output")) and
+    .mutations.createBucket == 1 and .mutations.createInput == 2 and .mutations.createOutput == 2
   ' "${ARTIFACT_DIR}/isolated-state-v1.json" >/dev/null || fail "fake API did not observe initial convergence"
 
   log "updating isolated routing configuration"
@@ -342,13 +360,18 @@ exercise_isolated_reconcile() {
     fake_api_state >"${ARTIFACT_DIR}/isolated-state-v2.json"
     if jq -e --arg name "${BUCKET_NAME}" '
       any(.buckets[]; .name == $name and any(.inputs[]; .name == "e2e-input" and .body == "operator-e2e-v2")) and
-      .mutations.updateInput == 1
+      all(.buckets[] | select(.name == $name);
+        all(.inputs[]; .name != "e2e-cleanup-input") and
+        all(.outputs[]; .name != "e2e-cleanup-output")) and
+      .mutations.updateInput == 1 and .mutations.deleteInput == 1 and .mutations.deleteOutput == 1
     ' "${ARTIFACT_DIR}/isolated-state-v2.json" >/dev/null; then
       break
     fi
     sleep 1
   done
-  jq -e '.mutations.updateInput == 1' "${ARTIFACT_DIR}/isolated-state-v2.json" >/dev/null || fail "fake API did not observe the input update"
+  jq -e '
+    .mutations.updateInput == 1 and .mutations.deleteInput == 1 and .mutations.deleteOutput == 1
+  ' "${ARTIFACT_DIR}/isolated-state-v2.json" >/dev/null || fail "fake API did not observe update and cleanup"
 
   before="$(jq -c '.mutations' "${ARTIFACT_DIR}/isolated-state-v2.json")"
   sleep 7
@@ -465,7 +488,7 @@ exercise_reconcile() {
   if [[ "${PRODUCTION_MODE}" == "true" ]]; then
     apply_production_forward "" "" baseline
   else
-    apply_isolated_forward operator-e2e-v1
+    apply_isolated_forward operator-e2e-v1 true
   fi
 
   for _ in $(seq 1 90); do

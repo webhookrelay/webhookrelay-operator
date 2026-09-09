@@ -25,7 +25,7 @@ func Load() (Config, error) {
 func normalizeAPIEndpointURL(value string) (string, error) {
 	endpoint, err := url.Parse(value)
 	if err != nil {
-		return "", fmt.Errorf("invalid Relay API endpoint URL: %w", err)
+		return "", fmt.Errorf("invalid Relay API endpoint URL: malformed URL")
 	}
 	if (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.Host == "" {
 		return "", fmt.Errorf("invalid Relay API endpoint URL: must be an absolute HTTP(S) URL")

@@ -25,16 +25,20 @@ func TestLoadNormalizesAPIEndpoint(t *testing.T) {
 }
 
 func TestLoadRejectsUnsafeAPIEndpoints(t *testing.T) {
-	tests := []string{
-		"relay-api.test/v1",
-		"ftp://relay-api.test/v1",
-		"https://key:secret@relay-api.test/v1",
-		"https://relay-api.test/v1?token=secret",
-		"https://relay-api.test/v1#fragment",
+	tests := []struct {
+		name     string
+		endpoint string
+	}{
+		{name: "relative", endpoint: "relay-api.test/v1"},
+		{name: "unsupported scheme", endpoint: "ftp://relay-api.test/v1"},
+		{name: "user information", endpoint: "https://key:secret@relay-api.test/v1"},
+		{name: "malformed user information", endpoint: "https://key:secret@%zz/v1"},
+		{name: "query", endpoint: "https://relay-api.test/v1?token=secret"},
+		{name: "fragment", endpoint: "https://relay-api.test/v1#fragment"},
 	}
-	for _, endpoint := range tests {
-		t.Run(endpoint, func(t *testing.T) {
-			t.Setenv("WHR_API_ENDPOINT_URL", endpoint)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("WHR_API_ENDPOINT_URL", test.endpoint)
 
 			_, err := Load()
 
