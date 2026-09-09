@@ -13,6 +13,8 @@ ARTIFACT_DIR="${REPO_ROOT}/.test/artifacts/${RUN_ID}"
 BIN_DIR="${RUN_DIR}/bin"
 K3S_BIN="${BIN_DIR}/k3s"
 HELM_BIN="${BIN_DIR}/helm"
+CANDIDATE_CHART="${RUN_DIR}/webhookrelay-operator-0.6.0.tgz"
+OLD_CHART="${RUN_DIR}/webhookrelay-operator-0.4.1.tgz"
 KUBECONFIG="${RUN_DIR}/kubeconfig"
 K3S_CONFIG="${RUN_DIR}/k3s.yaml"
 K3S_PID_FILE="${RUN_DIR}/k3s.pid"
@@ -84,6 +86,18 @@ download_tools() {
   "${REPO_ROOT}/.test/install-helm.sh" "${HELM_BIN}"
   "${K3S_BIN}" --version
   "${HELM_BIN}" version --short
+}
+
+package_candidate_chart() {
+  local packaged_chart
+  log "packaging candidate Helm chart"
+  helm package "${REPO_ROOT}/charts/webhookrelay-operator" --destination "${RUN_DIR}" \
+    >"${ARTIFACT_DIR}/helm-package.txt"
+  packaged_chart="$(awk '/Successfully packaged chart and saved it to:/ {print $NF}' \
+    "${ARTIFACT_DIR}/helm-package.txt")"
+  [[ "${packaged_chart}" == "${CANDIDATE_CHART}" ]] || \
+    fail "candidate chart package was ${packaged_chart}, expected ${CANDIDATE_CHART}"
+  [[ -f "${CANDIDATE_CHART}" ]] || fail "candidate chart package was not created"
 }
 
 start_k3s() {
@@ -161,7 +175,7 @@ build_and_import_images() {
 install_operator() {
   local -a helm_args
   log "installing the chart"
-  helm_args=(upgrade --install webhookrelay-operator "${REPO_ROOT}/charts/webhookrelay-operator" \
+  helm_args=(upgrade --install webhookrelay-operator "${CANDIDATE_CHART}" \
     --namespace "${NAMESPACE}" --create-namespace --wait --timeout 180s \
     --set-string image.repository=webhookrelay-operator-e2e \
     --set-string "image.tag=${RUN_ID}" \
@@ -718,6 +732,194 @@ assert_live_delivery() {
   log "${case_name}: live webhook delivery passed"
 }
 
+wait_for_object_deletion() {
+  local resource="$1"
+  for _ in $(seq 1 60); do
+    if ! kubectl -n "${NAMESPACE}" get "${resource}" >/dev/null 2>&1; then
+      return
+    fi
+    sleep 1
+  done
+  fail "${resource} was not deleted"
+}
+
+scale_operator_to_zero() {
+  kubectl -n "${NAMESPACE}" scale deployment/webhookrelay-operator --replicas=0 >/dev/null
+  for _ in $(seq 1 60); do
+    if [[ "$(kubectl -n "${NAMESPACE}" get pods \
+      -l app.kubernetes.io/instance=webhookrelay-operator -o json | jq '.items | length')" == "0" ]]; then
+      return
+    fi
+    sleep 1
+  done
+  fail "operator pods did not terminate before the lifecycle transition"
+}
+
+assert_helm_revision() {
+  local expected_revision="$1"
+  local actual_revision
+  actual_revision="$(helm history webhookrelay-operator --namespace "${NAMESPACE}" -o json | \
+    jq -r 'map(select(.status == "deployed")) | last | .revision')"
+  [[ "${actual_revision}" == "${expected_revision}" ]] || \
+    fail "Helm revision is ${actual_revision}, expected ${expected_revision}"
+}
+
+apply_legacy_lifecycle_forward() {
+  kubectl apply -f - <<EOF
+apiVersion: forward.webhookrelay.com/v1
+kind: WebhookRelayForward
+metadata:
+  name: e2e-forward
+  namespace: ${NAMESPACE}
+spec:
+  secretRefName: e2e-credentials
+  image: registry.k8s.io/pause:3.10
+  buckets:
+    - name: ${BUCKET_NAME}-lifecycle
+      inputs:
+        - name: legacy-input
+      outputs:
+        - name: legacy-output
+          destination: https://example.invalid/operator-e2e-lifecycle
+          disabled: true
+          internal: false
+          function_id: 00000000-0000-0000-0000-000000000000
+EOF
+}
+
+remove_crd_from_disposable_cluster() {
+  [[ "${PRODUCTION_MODE}" == "false" ]] || fail "refusing to remove the CRD in production mode"
+  [[ "${K3S_DATA_DIR}" == "/var/lib/webhookrelay-operator-e2e-${RUN_ID}" ]] || \
+    fail "refusing to remove the CRD from an unowned k3s data directory"
+  grep -Fxq "data-dir: ${K3S_DATA_DIR}" "${K3S_CONFIG}" || \
+    fail "refusing to remove the CRD without the task-owned k3s configuration"
+  kubectl delete crd webhookrelayforwards.forward.webhookrelay.com --wait=true --timeout=60s
+}
+
+exercise_helm_lifecycle() {
+  local legacy_uid old_image fake_state_before fake_state_after
+  [[ "${PRODUCTION_MODE}" == "false" ]] || return 0
+
+  log "testing custom-resource deletion and owned Deployment garbage collection"
+  kubectl -n "${NAMESPACE}" delete webhookrelayforward/e2e-forward --wait=true --timeout=60s
+  wait_for_object_deletion deployment/e2e-forward-whr-deployment
+
+  log "testing Helm uninstall with CRD retention"
+  helm uninstall webhookrelay-operator --namespace "${NAMESPACE}" --wait --timeout 120s
+  kubectl get crd webhookrelayforwards.forward.webhookrelay.com >/dev/null
+  for resource in \
+    deployment/webhookrelay-operator \
+    serviceaccount/webhookrelay-operator \
+    role/webhookrelay-operator-operator \
+    rolebinding/webhookrelay-operator-operator; do
+    if kubectl -n "${NAMESPACE}" get "${resource}" >/dev/null 2>&1; then
+      fail "Helm uninstall retained chart-owned ${resource}"
+    fi
+  done
+
+  log "downloading checksum-pinned published chart 0.4.1"
+  curl --fail --location --show-error --silent --output "${OLD_CHART}" \
+    https://charts.webhookrelay.com/webhookrelay-operator-0.4.1.tgz
+  printf '%s  %s\n' \
+    '7de5d0afa11405d603c41b81bab1b33f93e0cf6f9ddb3fc7ae5e9a1fd85a4907' \
+    "${OLD_CHART}" | sha256sum --check --strict -
+
+  helm install webhookrelay-operator "${OLD_CHART}" --namespace "${NAMESPACE}" \
+    --wait --timeout 180s
+  assert_helm_revision 1
+  old_image="$(kubectl -n "${NAMESPACE}" get deployment/webhookrelay-operator \
+    -o jsonpath='{.spec.template.spec.containers[0].image}')"
+  [[ "${old_image}" == "webhookrelay/webhookrelay-operator:0.6.0" ]] || \
+    fail "published chart uses unexpected operator image ${old_image}"
+  scale_operator_to_zero
+
+  apply_legacy_lifecycle_forward
+  legacy_uid="$(kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward \
+    -o jsonpath='{.metadata.uid}')"
+  [[ -n "${legacy_uid}" ]] || fail "legacy lifecycle custom resource has no UID"
+
+  log "applying the candidate CRD explicitly before Helm upgrade"
+  kubectl apply -f "${REPO_ROOT}/charts/webhookrelay-operator/crds/crd.yaml"
+  kubectl get crd webhookrelayforwards.forward.webhookrelay.com -o json | jq -e '
+    .spec.versions[] | select(.name == "v1") |
+    .schema.openAPIV3Schema.properties.spec.properties.buckets.items.properties.outputs.items.properties as $output |
+    ($output.functionId.type == "string") and ($output.function_id.type == "string") and
+    (.schema.openAPIV3Schema.properties.status.properties.conditions["x-kubernetes-list-type"] == "map")
+  ' >/dev/null || fail "candidate CRD schema is incomplete"
+
+  log "upgrading the published chart to the packaged candidate"
+  helm upgrade webhookrelay-operator "${CANDIDATE_CHART}" --namespace "${NAMESPACE}" \
+    --wait --timeout 180s \
+    --set-string image.repository=webhookrelay-operator-e2e \
+    --set-string "image.tag=${RUN_ID}" \
+    --set image.pullPolicy=IfNotPresent \
+    --set-string apiEndpointURL=http://relay-api:8080/v1
+  assert_helm_revision 2
+  kubectl -n "${NAMESPACE}" rollout status deployment/webhookrelay-operator --timeout=120s
+  [[ "$(kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward \
+    -o jsonpath='{.metadata.uid}')" == "${legacy_uid}" ]] || fail "Helm upgrade replaced the custom resource"
+  [[ "$(kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward \
+    -o jsonpath='{.spec.buckets[0].outputs[0].function_id}')" == \
+    "00000000-0000-0000-0000-000000000000" ]] || fail "legacy function_id was not retained"
+  wait_for_isolated_routing_status Configured
+  kubectl -n "${NAMESPACE}" rollout status deployment/e2e-forward-whr-deployment --timeout=120s
+  kubectl -n "${NAMESPACE}" get lease/webhookrelay-operator-lock >/dev/null
+  kubectl -n "${NAMESPACE}" auth can-i create leases.coordination.k8s.io \
+    --as="system:serviceaccount:${NAMESPACE}:webhookrelay-operator" | grep -Fxq yes || \
+    fail "operator service account cannot create Leases"
+  kubectl -n "${NAMESPACE}" get deployment/webhookrelay-operator -o json | jq -e --arg image "${IMAGE}" '
+    .spec.strategy.type == "Recreate" and
+    .spec.template.spec.containers[0].image == $image and
+    .spec.template.spec.containers[0].livenessProbe.httpGet.path == "/healthz" and
+    .spec.template.spec.containers[0].readinessProbe.httpGet.path == "/readyz"
+  ' >/dev/null || fail "candidate operator Deployment lifecycle wiring is invalid"
+  kubectl -n "${NAMESPACE}" get pods -l app.kubernetes.io/instance=webhookrelay-operator -o json | \
+    jq -e --arg image "${IMAGE}" 'all(.items[]; .spec.containers[0].image == $image)' >/dev/null || \
+    fail "old and candidate operator pods overlapped after upgrade"
+
+  scale_operator_to_zero
+  fake_state_before="$(fake_api_state | jq -c '.mutations')"
+  log "rolling back application resources with the candidate operator stopped"
+  helm rollback webhookrelay-operator 1 --namespace "${NAMESPACE}" --wait --timeout 180s
+  assert_helm_revision 3
+  kubectl -n "${NAMESPACE}" rollout status deployment/webhookrelay-operator --timeout=120s
+  [[ "$(kubectl -n "${NAMESPACE}" get deployment/webhookrelay-operator \
+    -o jsonpath='{.spec.template.spec.containers[0].image}')" == "${old_image}" ]] || \
+    fail "Helm rollback did not restore the published operator image"
+  kubectl -n "${NAMESPACE}" get pods -l app.kubernetes.io/instance=webhookrelay-operator -o json | \
+    jq -e --arg image "${old_image}" 'all(.items[]; .spec.containers[0].image == $image)' >/dev/null || \
+    fail "candidate and old operator pods overlapped after rollback"
+  sleep 7
+  scale_operator_to_zero
+  fake_state_after="$(fake_api_state | jq -c '.mutations')"
+  [[ "${fake_state_before}" == "${fake_state_after}" ]] || \
+    fail "the rolled-back controller duplicated fake remote resources"
+  [[ "$(kubectl -n "${NAMESPACE}" get webhookrelayforward/e2e-forward \
+    -o jsonpath='{.metadata.uid}')" == "${legacy_uid}" ]] || fail "rollback replaced the custom resource"
+
+  kubectl -n "${NAMESPACE}" delete webhookrelayforward/e2e-forward --wait=true --timeout=60s
+  wait_for_object_deletion deployment/e2e-forward-whr-deployment
+  helm uninstall webhookrelay-operator --namespace "${NAMESPACE}" --wait --timeout 120s
+  kubectl -n "${NAMESPACE}" delete lease/webhookrelay-operator-lock \
+    configmap/webhookrelay-operator-lock --ignore-not-found >/dev/null
+  kubectl get crd webhookrelayforwards.forward.webhookrelay.com >/dev/null
+  for resource in \
+    deployment/webhookrelay-operator \
+    serviceaccount/webhookrelay-operator \
+    role/webhookrelay-operator-operator \
+    rolebinding/webhookrelay-operator-operator \
+    lease/webhookrelay-operator-lock \
+    configmap/webhookrelay-operator-lock; do
+    if kubectl -n "${NAMESPACE}" get "${resource}" >/dev/null 2>&1; then
+      fail "lifecycle cleanup retained ${resource}"
+    fi
+  done
+
+  log "testing separately guarded CRD removal in disposable k3s"
+  remove_crd_from_disposable_cluster
+  log "packaged Helm install, upgrade, rollback, and uninstall lifecycle passed"
+}
+
 cleanup_production_resources() {
   local bucket_count bucket_id
   [[ "${PRODUCTION_MODE}" == "true" ]] || return 0
@@ -800,9 +1002,11 @@ cleanup() {
 trap cleanup EXIT INT TERM
 preflight
 download_tools
+package_candidate_chart
 start_k3s
 build_and_import_images
 install_fake_api
 install_operator
 install_receiver
 exercise_reconcile
+exercise_helm_lifecycle

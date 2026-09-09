@@ -14,7 +14,27 @@ helm upgrade --install webhookrelay-operator webhookrelay/webhookrelay-operator 
   --namespace webhookrelay --create-namespace
 ```
 
-The CRD in the chart's `crds/` directory is installed automatically by Helm 3.
+The CRD in the chart's `crds/` directory is installed automatically on the
+first Helm install. Helm deliberately does not upgrade or delete CRDs. Before
+upgrading the operator, apply the CRD from the target chart or release checkout:
+
+```bash
+kubectl apply -f charts/webhookrelay-operator/crds/crd.yaml
+helm upgrade webhookrelay-operator webhookrelay/webhookrelay-operator \
+  --namespace webhookrelay
+```
+
+Uninstalling the chart leaves the CRD and all `WebhookRelayForward` objects in
+place. Delete those objects before uninstalling if their owned relay-agent
+Deployments should be garbage-collected. Delete the CRD separately only when
+you intend to delete every `WebhookRelayForward` object cluster-wide.
+
+A Helm rollback rolls back the operator resources, not the CRD. Before rolling
+back across operator generations, ensure the existing custom resources use
+fields understood by the older controller, scale the current operator to zero,
+wait for its pods to terminate, and then run `helm rollback`. The newer CRD
+remains installed.
+
 Create the Relay access-token Secret and each `WebhookRelayForward` in the same
 namespace. Per-resource `secretRefNamespace` is deprecated and cannot grant
 cross-namespace access.
